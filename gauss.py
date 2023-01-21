@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import tqdm as tqdm
-from numba import njit, vectorize, float64
+from numba import njit, vectorize, float64, bool_
 import pandas as pd
 import seaborn as sns
 import matplotlib.colorbar as cbar
@@ -41,29 +41,82 @@ def d_list(sigma: float) -> list:
     return coeff_list
 
 
-@vectorize([(float64, float64)], target="parallel", nopython=True, cache=True)
-def fi_wave(x: np.ndarray, sigma: float):
-    d = d_list(sigma)
-    fi_val = 0
-    for k in range(-RMAX, RMAX + 1):
-        fi_val += d[abs(k)] * exp(-((x - k) * (x - k)) / (2 * sigma * sigma))
-    return 1 / C(sigma) * fi_val
+def get_y(sigma, x):
+    a, b = 8.007502736216965, 0.8211001
+    ln_c = -1.4524905467690978
+    # y1 = deepcopy(y)
+    # for i in tqdm(range(1)):
+    #     y_ = np.log(y1)
+    #     b_f_vals = np.array(a / (x + b) + ln_c).reshape(-1, 1)
+    #     regr = LinearRegression()
+    #     regr.fit(b_f_vals, y_)
+    #     a *= regr.coef_[0]
+    #     ln_c += regr.intercept_
+    #     y1 = np.exp(a / (x + b) + ln_c)
+    #     div = np.log(y) - ln_c
+    #     x_pred = (a - b * (div)) / div
+    #     n = np.mean(x_pred - x)
+    #     if np.mean(np.abs((np.exp(a / (x + b - n) + ln_c) - y) / y)) < np.mean(np.abs((y1 - y) / y)):
+    #         b -= n
+    # alpha = np.exp(a / (sigma + b) + ln_c)
+    # print(alpha)
+    d = pd.read_csv('d_0-2.csv', header=0, index_col=['sigma']).loc[sigma][0]
+    alpha = pd.read_csv('sigma-alpha-norm_0-2.csv', header=0, index_col=['sigma']).loc[sigma].loc['alpha']
+    # print(alpha)
+    out = d * np.exp(-alpha * np.abs(x))
+    return out
 
+# @vectorize([(float64, float64, bool_)], target="parallel", nopython=True, cache=True)
+def fi_wave(x: np.ndarray, sigma: float, flag: bool):
+    def inner(x: np.ndarray, sigma: float, flag: bool):
+        kk = np.arange(-RMAX, RMAX + 1)
+        fi_val = 0
+        if flag:
+            d = d_list(sigma)
+            for k in range(-RMAX, RMAX + 1):
+                fi_val += d[abs(k)] * np.exp(-((x - k) * (x - k)) / (2 * sigma * sigma))
+        else:
+            d = get_y(sigma, kk)
+            for k in range(-RMAX, RMAX + 1):
+                fi_val += d[abs(k)] * np.exp(-((x - k) * (x - k)) / (2 * sigma * sigma))
 
-# if __name__ == '__main__':
-#     sigma = 1.5
-#     x = np.linspace(BOUND_A, BOUND_B, 1000)
-#     y = fi_wave(x, sigma)
-#     d = np.abs(d_list(sigma))
-#     # o = open('coefficients.csv', 'w')
-#     # for i in range(len(d)):
-#     #     o.write(f'{i},{d[i]:.3e}\n')
-#     # o.close()
-#     fig, ax = plt.subplots(figsize=(12/10*8, 10/12*8))
-#     plt.grid()
-#     plt.plot(x, y)
-#     # plt.plot(d)
-#     plt.show()
+        return 1 / C(sigma) * fi_val
+    return np.vectorize(inner)(x, sigma, flag)
+
+if __name__ == '__main__':
+    sigma = 1
+    x = np.linspace(BOUND_A, BOUND_B, 1000)
+    y = fi_wave(x, sigma, True)
+    y1 = fi_wave(x, sigma, False)
+    # d = np.abs(d_list(sigma))
+    # o = open('coefficients.csv', 'w')
+    # for i in range(len(d)):
+    #     o.write(f'{i},{d[i]:.3e}\n')
+    # o.close()
+    fig, ax = plt.subplots(figsize=(12/10*8, 10/12*8))
+    plt.grid()
+    plt.plot(x, y)
+    plt.plot(x, y1)
+    # plt.plot(d)
+    plt.show()
+
+if __name__ == '__main__':
+    sigma = 1
+    x = np.linspace(BOUND_A, BOUND_B, 1000)
+    y = fi_wave(x, sigma, True)
+    y1 = fi_wave(x, sigma, False)
+    # d = np.abs(d_list(sigma))
+    # o = open('coefficients.csv', 'w')
+    # for i in range(len(d)):
+    #     o.write(f'{i},{d[i]:.3e}\n')
+    # o.close()
+    fig, ax = plt.subplots(figsize=(12/10*8, 10/12*8))
+    plt.grid()
+    plt.plot(x, y)
+    plt.plot(x, y1)
+    # plt.plot(d)
+    plt.show()
+
 
 
 def write_d_to_csv():
@@ -215,43 +268,4 @@ if __name__ == '__main__':
     plt.grid()
     plt.show()
 
-# if __name__ == '__main__':
-# x = np.linspace(BOUND_A, BOUND_B, 1000)
-# sigma_step = 0.001
-# k = np.linspace(0, 2, RMAX + 1)
-# coeffs = []
-# for sigma in np.arange(0, 2, sigma_step):
-#     d = np.abs(d_list(sigma))
-#
-#     err_f = []
-#     a_variations = np.arange(0.01, 47.01, 0.1)
-#     for i in a_variations:
-#         error = np.linalg.norm(d[0] * np.exp(-i * np.abs(k)) - d)
-#         err_f.append(error)
-#     arr = np.array(err_f)
-#     min_err = arr.min()
-#     min_num = arr.argmin()
-#     coeffs.append([sigma, a_variations[min_num], min_err])
-# df = pd.DataFrame(np.array(coeffs), columns=['sigma', 'alpha', 'norm'])
-# df.to_csv('sigma-alpha-norm_0-2.csv', index=False)
-# df = pd.read_csv('sigma-alpha-norm_0-2.csv',header=0, usecols=['sigma', 'alpha', 'norm'])
-#
-# fig, ax = plt.subplots()
-# line_plt = sns.lineplot(x='sigma', y='alpha', data=df, label='Альфа', color=(1,0,0,0.6))
-# bias = df['norm'] * 10
-# sigma_cnt = len(df['sigma']) - 1
-# colors = mpl.colormaps['viridis']
-# x = df['sigma']
-# y = df['alpha']
-# bias_norm = bias / bias.max()
-# chunk = None
-# for i in range(sigma_cnt - 1):
-#     chunk = plt.fill_between(x[i:i + 2], y[i:i + 1] - bias[i:i + 2], y[i:i + 1] + bias[i:i + 2], alpha=1,
-#                           color=colors(1 - bias_norm[i]))
-# y = 1 / np.log(np.sqrt(x + 1))
-# y[y > 70] = 70
-# plt.plot(x, y)
-# plt.grid()
-# plt.legend()
-# cbar = plt.colorbar(chunk,orientation='horizontal',label="Ошибка",shrink=.75)
-# plt.show()
+
