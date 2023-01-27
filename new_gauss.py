@@ -662,15 +662,11 @@ def play_animation2():
     text3 = ax.text(0.55, 0.75, '', transform=ax.transAxes)
     plt.vlines(19, 0, 1)
 
-    def init():
-        line1.set_data([], [])
-        line2.set_data([], [])
-
-        return line1, line2,
-
-    xdata, ydata = [], []
     d_list = []
     d_pred_list = []
+
+    axa = plt.axes([0.15, 0.01, 0.65, 0.03])
+    sa = Slider(axa, 'a', 0, 100, valinit=0, valstep=1)
 
     def animate(i):
         x = np.abs(d_list[i])
@@ -703,11 +699,12 @@ def play_animation2():
         # plt.legend()
         # plt.grid()
         # plt.show()
+    sa.on_changed(animate)
 
-    anim = animation.FuncAnimation(fig, animate,
-                                   frames=101,
-                                   interval=200,
-                                   blit=True)
+    # anim = animation.FuncAnimation(fig, animate,
+    #                                frames=101,
+    #                                interval=200,
+    #                                blit=True)
     plt.grid()
     plt.show()
     # anim.save('gif.gif',writer='imagemagick')
@@ -905,7 +902,7 @@ def alpha_sigma_plot():
     # plt.plot('sigma','alpha',data=df.iloc[40:,:])
     fig = plt.figure()
     # ax = plt.axes(xlim=(0.1, 2.1),ylim=(-3, 0))
-    ax = plt.axes(xlim=(0.1, 2.1), ylim=(0, 23))
+    ax = plt.axes(xlim=(0.1, 2.1), ylim=(0, 5))
     # plt.plot('sigma', 'alpha', '', data=df)
     plt.plot('sigma', 'c', '', data=df)
     a = 1.9
@@ -923,7 +920,7 @@ def alpha_sigma_plot():
 if __name__ == '__main__':
     # play_animation()
     # calculate_alphas2()
-    # play_animation2()
+    play_animation2()
     # calculate_fi()
-    fi_approx_fi_slider()
-    # alpha_sigma_plot()
+    # fi_approx_fi_slider()
+    alpha_sigma_plot()
