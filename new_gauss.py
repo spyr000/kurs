@@ -83,6 +83,39 @@ def fi_wave(x: np.ndarray, sigma: float):
     return 1 / C(sigma) * fi_val
 
 
+@np.vectorize
+def approx_fi_wave2(x: np.ndarray, sigma: float):
+    kk = np.arange(0, RMAX + 1)
+    fi_val = 0
+    # d = d_list(sigma)
+    # print(d)
+    d_0 = pd.read_csv('d_native.csv'
+                      , header=0
+                      , index_col=['sigma']
+                      ).loc[sigma].iat[0]
+    dff = pd.read_csv('sigma_alpha_c_err.csv'
+                      , header=0
+                      , index_col=['sigma']
+                      )
+
+    alpha, c, error = dff.loc[sigma]
+    if alpha is None or c is None or error is None:
+        print('DDD')
+        ind = np.round((np.round(sigma, 2) - 0.1) / 0.02).astype(int)
+        alpha, c, error = dff.iloc[ind - 1]
+
+    d = d_0 \
+        * np.exp(alpha *
+                 (kk ** c)) \
+        * (-1.) ** kk
+
+    for k in range(-RMAX, RMAX + 1):
+        # print(d[abs(k)])
+        fi_val += d[abs(k)] * exp(-((x - k) * (x - k)) / (2 * sigma * sigma))
+
+    return 1 / C(sigma) * fi_val
+
+
 def gradient_desc(sigma, alpha=0, lr=1e-4):
     d = pd.read_csv('d_native.csv'
                     , header=0
@@ -125,7 +158,124 @@ def is_pos_def(x):
     return x[0, 0] > 0 and (x[0, 0] * x[1, 1] - x[0, 1] * x[1, 0]) > 0
 
 
-def gradient_desc2(sigma, alpha=0, c=0, lr=1e-6, h_a=0.7, h_c=0.7):
+class Container:
+    def __init__(self):
+        self.container = []
+
+    def insert(self, elem):
+        if len(self.container) < 3:
+            self.container.append(elem)
+            return False
+        elif len(self.container) == 3:
+            if np.isclose(elem, self.container[0]) \
+                    or np.isclose(elem, self.container[1]) \
+                    or np.isclose(elem, self.container[2]):
+                self.container.clear()
+                return True
+            else:
+                self.container = [self.container[1], self.container[2], elem]
+                return False
+        else:
+            self.container.clear()
+            return False
+
+
+def gradient_desc2(sigma, alpha=0, c=0, lr=1e-8, h_a=0.005, h_c=0.005):
+    container = Container()
+
+    d = pd.read_csv('d_native.csv'
+                    , header=0
+                    , index_col=['sigma']
+                    )
+
+    d = np.abs(np.array(d.loc[sigma]))
+    d_0 = d[0]
+    d = d[1:]
+    k = np.arange(1, RMAX + 1)
+
+    mse = lambda x, y: 1 / len(x) * np.sum((x - y) ** 2)
+    eps = 1
+    prev_eps = 1
+    cnt = 0
+    max_repeat = 10
+    max_iter = 100_000
+
+    flag = True
+    print('сигма:', sigma)
+    i = 0
+    while eps > lr and flag:
+
+        d_pred = d_0 * np.exp(alpha * (k ** c))
+        eps = mse(d, d_pred)
+        if container.insert(eps):
+            cnt += 1
+        # print(container.container, cnt)
+        # if prev_eps == eps:
+        #     cnt += 1
+        if cnt > max_repeat:
+            cnt = 0
+            flag = False
+        else:
+            alpha_derivative = 1 / RMAX * (
+                np.sum(-d_0 * (k ** c)
+                       * np.exp(alpha
+                                * (k ** c))
+                       * 2 * (d - d_pred))
+            )
+            c_derivative = 1 / RMAX * (
+                np.sum(-d_0 * alpha * (k ** c)
+                       * np.log(k)
+                       * np.exp(alpha * (k ** c))
+                       * 2 * (d - d_pred)))
+            alpha2_derivative = 1 / RMAX * \
+                                np.sum(
+                                    -2 * d * (k ** (2 * c)) * d_0 * np.exp((k ** c) * alpha) \
+                                    + 4 * (k ** (2 * c)) * (d_0 ** 2) * np.exp(2 * (k ** c) * alpha)
+                                )
+            alpha_c_derivative = 1 / RMAX * \
+                                 np.sum(
+                                     4 * (k ** (2 * c)) * alpha * (d_0 ** 2) * np.exp(2 * (k ** c) * alpha) * np.log(k) \
+                                     - 2 * d * (k ** c) * d_0 * np.log(k) * np.exp((k ** c) * alpha) \
+                                     - 2 * d * (k ** (2 * c)) * alpha * d_0 * np.log(k) * np.exp((k ** c) * alpha) \
+                                     + 2 * (k ** c) * (d_0 ** 2) * np.exp(2 * (k ** c) * alpha) * np.log(k)
+                                 )
+            c2_derivative = 1 / RMAX * \
+                            np.sum(
+                                4 * (k ** (2 * c)) * (alpha ** 2) * (d_0 ** 2) * np.exp(2 * (k ** c) * alpha) * (
+                                        np.log(k) ** 2) \
+                                - 2 * d * (k ** c) * alpha * d_0 * (np.log(k) ** 2) * np.exp((k ** c) * alpha) \
+                                - 2 * d * (k ** (2 * c)) * (alpha ** 2) * d_0 * (np.log(k) ** 2) * np.exp(
+                                    (k ** c) * alpha) \
+                                + 2 * (k ** c) * alpha * (d_0 ** 2) * np.exp(2 * (k ** c) * alpha) * (np.log(k) ** 2)
+                            )
+
+            hessian = np.array([
+                [alpha2_derivative, alpha_c_derivative],
+                [alpha_c_derivative, c2_derivative]
+            ])
+            # print(hessian)
+            if is_pos_def(hessian):
+                _hessian = np.linalg.inv(hessian)
+                grad = np.array([[alpha_derivative], [c_derivative]])
+                _d = (_hessian @ grad).flatten()
+                alpha -= h_a * _d[0]
+                c -= h_c * _d[1]
+            else:
+                alpha -= h_a * alpha_derivative
+                c -= h_c * c_derivative
+            # if c > 4:
+            #     c = 4
+            print(f'\t{i}) альфа:', alpha, 'степень:', c, 'ошибка:', eps, 'сигма:', sigma)
+            if i > max_iter:
+                flag = False
+            prev_eps = eps
+            # container.insert(prev_eps)
+            i += 1
+
+    return alpha, c, eps, h_a, h_c
+
+
+def gradient_desc3(sigma, alpha=0, c=0, lr=1e-6, h_a=0.5, h_c=0.5):
     d = pd.read_csv('d_native.csv'
                     , header=0
                     , index_col=['sigma']
@@ -146,11 +296,6 @@ def gradient_desc2(sigma, alpha=0, c=0, lr=1e-6, h_a=0.7, h_c=0.7):
     while eps > lr and flag:
 
         d_pred = d_0 * np.exp(alpha * (k ** c))
-        # if np.any(np.isnan(d_pred)):
-        #     print('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA')
-        #     alpha = 0
-        #     c = 0
-        #     d_pred = d_0 * np.exp(alpha * (k ** c))
         eps = mse(d, d_pred)
         if eps == prev_eps:
             cnt += 1
@@ -169,61 +314,20 @@ def gradient_desc2(sigma, alpha=0, c=0, lr=1e-6, h_a=0.7, h_c=0.7):
                        * np.log(k)
                        * np.exp(alpha * (k ** c))
                        * 2 * (d - d_pred)))
-            alpha2_derivative = 1 / RMAX * \
-                                np.sum(
-                                    -2 * d_pred * (k ** (2 * c)) * d_0 * np.exp((k ** c) * alpha) \
-                                    + 4 * (k ** (2 * c)) * (d_0 ** 2) * np.exp(2 * (k ** c) * alpha)
-                                )
-            alpha_c_derivative = 1 / RMAX * \
-                                 np.sum(
-                                     4 * (k ** (2 * c)) * alpha * (d_0 ** 2) * np.exp(2 * (k ** c) * alpha) * np.log(k) \
-                                     - 2 * d_pred * (k ** c) * d_0 * np.log(k) * np.exp((k ** c) * alpha) \
-                                     - 2 * d_pred * (k ** (2 * c)) * alpha * d_0 * np.log(k) * np.exp((k ** c) * alpha) \
-                                     + 2 * (k ** c) * (d_0 ** 2) * np.exp(2 * (k ** c) * alpha) * np.log(k)
-                                 )
-            c2_derivative = 1 / RMAX * \
-                            np.sum(
-                                4 * (k ** (2 * c)) * (alpha ** 2) * (d_0 ** 2) * np.exp(2 * (k ** c) * alpha) * (
-                                        np.log(k) ** 2) \
-                                - 2 * d_pred * (k ** c) * alpha * d_0 * (np.log(k) ** 2) * np.exp((k ** c) * alpha) \
-                                - 2 * d_pred * (k ** (2 * c)) * (alpha ** 2) * d_0 * (np.log(k) ** 2) * np.exp(
-                                    (k ** c) * alpha) \
-                                + 2 * (k ** c) * alpha * (d_0 ** 2) * np.exp(2 * (k ** c) * alpha) * (np.log(k) ** 2)
-                            )
 
-            hessian = np.array([
-                [alpha2_derivative, alpha_c_derivative],
-                [alpha_c_derivative, c2_derivative]
-            ])
-            # print(hessian)
-            if is_pos_def(hessian):
-                _hessian = np.linalg.inv(hessian)
-                grad = np.array([[alpha_derivative], [c_derivative]])
-                _d = (_hessian @ grad).flatten()
-                alpha -= h_a * _d[0]
-                c -= h_c * _d[1]
-            else:
-                alpha -= h_a * alpha_derivative
-                c -= h_c * c_derivative
-            # alpha_derivative -= h_a * alpha2_derivative + 0.5 * (h_a ** 2) *
-            # c2_derivative -= h_c * c2_derivative
-            # alpha -= h_a * alpha_derivative
-            # if alpha2_derivative > 0:
-            #     alpha -= 0.5 * (h_a ** 2) * alpha2_derivative
-            #
-            # c -= h_c * c_derivative
-            # if c2_derivative > 0:
-            #     c2_derivative -= 0.5 * (h_c ** 2) * c2_derivative
-            if c > 4:
-                c = 4
+            alpha -= h_a * alpha_derivative
+            c -= h_c * c_derivative
+
+            # if c > 4:
+            #     c = 4
             print(f'\t{i}) альфа:', alpha, 'степень:', c, 'ошибка:', eps, 'сигма:', sigma)
             if i > max_iter:
                 flag = False
             prev_eps = eps
             i += 1
 
-
     return alpha, c, eps, h_a, h_c
+
 
 def newton_gauss(sigma, h_a, h_c, alpha=0, c=0, lr=1e-6):
     d = pd.read_csv('d_native.csv'
@@ -253,14 +357,14 @@ def newton_gauss(sigma, h_a, h_c, alpha=0, c=0, lr=1e-6):
             cnt = 0
             flag = False
         else:
-            alpha_derivative = -d_0 * (k ** c)\
-                       * np.exp(alpha * (k ** c)) \
-                       * 2 * (d - d_pred)
+            alpha_derivative = -d_0 * (k ** c) \
+                               * np.exp(alpha * (k ** c)) \
+                               * 2 * (d - d_pred)
 
             c_derivative = -d_0 * alpha * (k ** c) \
-                       * np.log(k) \
-                       * np.exp(alpha * (k ** c)) \
-                       * 2 * (d - d_pred)
+                           * np.log(k) \
+                           * np.exp(alpha * (k ** c)) \
+                           * 2 * (d - d_pred)
 
             jacobian = np.array([
                 alpha_derivative.tolist(),
@@ -269,15 +373,14 @@ def newton_gauss(sigma, h_a, h_c, alpha=0, c=0, lr=1e-6):
 
             while True:
                 try:
-                    _d = np.linalg.pinv(jacobian) @\
-                         np.hstack((r := (d_pred - d).reshape(-1,1), r))
+                    _d = np.linalg.pinv(jacobian) @ \
+                         np.hstack((r := (d_pred - d).reshape(-1, 1), r))
                     break
                 except np.linalg.LinAlgError:
                     continue
             # print(_d)
             alpha -= h_a * _d[0, 0]
             c -= h_c * _d[1, 1]
-
 
             # alpha_derivative -= h_a * alpha2_derivative + 0.5 * (h_a ** 2) *
             # c2_derivative -= h_c * c2_derivative
@@ -300,27 +403,7 @@ def newton_gauss(sigma, h_a, h_c, alpha=0, c=0, lr=1e-6):
             prev_eps = eps
             i += 1
 
-
     return alpha, c, eps, h_a, h_c
-
-def calculate_alphas2():
-    d = pd.read_csv('d_native.csv'
-                    , header=0
-                    , index_col=['sigma']
-                    )
-    sigmas = np.array(d.index)
-    a = []
-    alpha, c = 0, 0
-    h_a, h_c = 0.00001, 0.00001
-    for sigma in sigmas:
-        alpha, c, err, h_a, h_c = newton_gauss(sigma, alpha=alpha, c=c, h_a=h_a, h_c=h_c)
-        a.append([sigma, alpha, c, err])
-    # print(a)
-    df = pd.DataFrame(a, columns=['sigma', 'alpha', 'c', 'error'])
-    df.set_index('sigma', inplace=True)
-    print(df)
-    df.to_csv('sigma_alpha_c_err2.csv')
-    return df
 
 
 def calculate_alphas():
@@ -338,6 +421,43 @@ def calculate_alphas():
     df.set_index('sigma', inplace=True)
     print(df)
     df.to_csv('sigma_alpha_err.csv')
+    return df
+
+
+def calculate_alphas2():
+    d = pd.read_csv('d_native.csv'
+                    , header=0
+                    , index_col=['sigma']
+                    )
+    coeffs = pd.read_csv('sigma_alpha_c_err.csv'
+                         , header=0
+                         , index_col=['sigma']
+                         )
+    sigmas = np.array(d.index)
+    a = []
+    alpha, c = 0, 0
+    h_a, h_c = 0.05, 0.05
+    for sigma in sigmas:
+        _alpha, _c, _ = coeffs.loc[sigma]
+        alpha, c, err, h_a, h_c = gradient_desc2(sigma, alpha=_alpha, c=_c, h_a=h_a, h_c=h_c)
+        # alpha, c, err = coeffs.loc[sigma]
+        while np.isnan(alpha) or np.isnan(c):
+            print('\n',sigma,'\n')
+            ind = np.round((np.round(sigma, 2) - 0.1) / 0.02).astype(int)
+            _alpha, _c, _err = coeffs.iloc[ind - 1]
+            while np.isnan(_alpha):
+                ind -= 1
+                _alpha, _c, _err = coeffs.iloc[ind - 1]
+        #
+            alpha, c, err, h_a, h_c = gradient_desc2(sigma, alpha=_alpha, c=_c, h_a=h_a, h_c=h_c)
+            h_a /= 2
+            h_c /= 2
+        a.append([sigma, alpha, c, err])
+    # print(a)
+    df = pd.DataFrame(a, columns=['sigma', 'alpha', 'c', 'error'])
+    df.set_index('sigma', inplace=True)
+    print(df)
+    df.to_csv('sigma_alpha_c_err.csv')
     return df
 
 
@@ -366,30 +486,25 @@ def approx_fi_wave(x: np.ndarray, sigma: float):
     return 1 / C(sigma) * fi_val
 
 
-@np.vectorize
-def approx_fi_wave2(x: np.ndarray, sigma: float):
-    kk = np.arange(0, RMAX + 1)
-    fi_val = 0
-    # d = d_list(sigma)
-    # print(d)
-    d_0 = pd.read_csv('d_native.csv'
-                      , header=0
-                      , index_col=['sigma']
-                      ).loc[sigma].iat[0]
-    d = pd.read_csv('sigma_alpha_c_err.csv'
-                    , header=0
-                    , index_col=['sigma']
-                    )
+def calculate_fi():
+    df = pd.read_csv('sigma_alpha_c_err.csv'
+                     , header=0
+                     , index_col=['sigma']
+                     )
 
-    alpha = np.array(d.at[sigma, 'alpha'])
-    c = np.array(d.at[sigma, 'c'])
-    d = d_0 * np.exp(alpha * (kk ** c)) * (-1.) ** kk
+    fi_list, approx_fi_list = [], []
+    x = np.linspace(BOUND_A, BOUND_B, 1000)
 
-    for k in range(-RMAX, RMAX + 1):
-        # print(d[abs(k)])
-        fi_val += d[abs(k)] * exp(-((x - k) * (x - k)) / (2 * sigma * sigma))
+    for sigma in tqdm(df.index):
+        y = fi_wave(x, sigma)
+        y1 = approx_fi_wave2(x, sigma)
+        # fi_list.append(y.tolist())
+        approx_fi_list.append(y1.tolist())
 
-    return 1 / C(sigma) * fi_val
+    # df1 = pd.DataFrame(fi_list, index=df.index)
+    # df1.to_csv('sigma_fi.csv')
+    df1 = pd.DataFrame(approx_fi_list, index=df.index)
+    df1.to_csv('sigma_approx_fi2.csv')
 
 
 def write_d_to_csv():
@@ -442,27 +557,27 @@ def write_d_to_csv():
 #     df1 = pd.DataFrame(approx_fi_list, index=df.index)
 #     df1.to_csv('sigma_approx_fi2.csv')
 
-    # df1 = pd.read_csv('sigma_fi.csv'
-    #                   , header=0
-    #                   , index_col='sigma'
-    #                   )
-    #
-    # print(df1)
-    # def makeArray(text):
-    #     return np.fromstring(text, sep=' ')
-    #
-    # print(np.fromstring(df1.at[0.10,'fi'], sep=' '))
-    # df.loc[:,'fi'] = df.loc[:,'fi'].apply(makeArray)
-    # df.loc[:,'approx_fi'] = df.loc[:,'approx_fi'].apply(makeArray)
-    # for i in range(y := df1.iat[0, 0]):
-    #     print(i, y[i])
-    # print(df1)
-    # fig, ax = plt.subplots(figsize=(12 / 10 * 8, 10 / 12 * 8))
-    # plt.grid()
-    # plt.plot(x, y)
-    # plt.plot(x, y1)
-    # plt.show()
-    # fig = plt.figure()
+# df1 = pd.read_csv('sigma_fi.csv'
+#                   , header=0
+#                   , index_col='sigma'
+#                   )
+#
+# print(df1)
+# def makeArray(text):
+#     return np.fromstring(text, sep=' ')
+#
+# print(np.fromstring(df1.at[0.10,'fi'], sep=' '))
+# df.loc[:,'fi'] = df.loc[:,'fi'].apply(makeArray)
+# df.loc[:,'approx_fi'] = df.loc[:,'approx_fi'].apply(makeArray)
+# for i in range(y := df1.iat[0, 0]):
+#     print(i, y[i])
+# print(df1)
+# fig, ax = plt.subplots(figsize=(12 / 10 * 8, 10 / 12 * 8))
+# plt.grid()
+# plt.plot(x, y)
+# plt.plot(x, y1)
+# plt.show()
+# fig = plt.figure()
 
 
 def write_d_abs_to_csv():
@@ -540,11 +655,12 @@ def play_animation2():
     sig = np.array(df.index)
     k = np.arange(0, RMAX + 1)
     fig = plt.figure()
-    ax = plt.axes(xlim=(0, 101), ylim=(-1, 1))
+    ax = plt.axes(xlim=(0, 101), ylim=(0, 1))
     line1, = ax.plot([], [], lw=2)
     line2, = ax.plot([], [], lw=0.5)
     text2 = ax.text(0.55, 0.85, '', transform=ax.transAxes)
     text3 = ax.text(0.55, 0.75, '', transform=ax.transAxes)
+    plt.vlines(19, 0, 1)
 
     def init():
         line1.set_data([], [])
@@ -557,8 +673,8 @@ def play_animation2():
     d_pred_list = []
 
     def animate(i):
-        x = d_list[i]
-        y = d_pred_list[i]
+        x = np.abs(d_list[i])
+        y = np.abs(d_pred_list[i])
 
         line1.set_data(k, x)
         line1.set_marker('.')
@@ -568,6 +684,7 @@ def play_animation2():
         text3.set_text(('$\sigma$: ' + str(sig[i])))
         line2.set_data(k, y, )
         line2.set_marker('.')
+
         plt.legend()
         return line1, line2, text2, text3,
 
@@ -575,7 +692,10 @@ def play_animation2():
         alpha = df.at[i, 'alpha']
         c = df.at[i, 'c']
         d = np.array(df1.loc[i])
-        d_pred = d[0] * np.exp(alpha * (k ** c)) * (-1.) ** k
+        d_pred = d[0] \
+                 * np.exp(alpha * (k ** c)) \
+                 * (-1.) \
+                 ** k
         d_list.append(d)
         d_pred_list.append(d_pred)
         # plt.plot(k, d, label='d')
@@ -594,45 +714,45 @@ def play_animation2():
 
 
 # if __name__ == '__main__':
-    # calculate_alphas2()
-    # play_animation2()
+# calculate_alphas2()
+# play_animation2()
 
 
-    # d = pd.read_csv('d_native.csv'
-    #                 , header=0
-    #                 , index_col=['sigma']
-    #                 )
-    #
-    # k = np.arange(0, RMAX + 1)
-    # fig = plt.figure()
-    # ax = plt.axes(xlim=(0, RMAX), ylim=(0, 3))
-    # line1, = plt.plot(k, np.abs(d.loc[0.10]), label='$\phi$')
-    # alpha = 0
-    # line2, = plt.plot(k, d.loc[0.10].iat[0] * np.exp(-alpha * k ** 2), label='$\hat{\phi}$')
-    #
-    # axalpha = plt.axes([0.15, 0.01, 0.65, 0.03])
-    # axsigma = plt.axes([0.15, 0.03, 0.65, 0.03])
-    # axc = plt.axes([0.15, 0.06, 0.65, 0.03])
-    #
-    # salpha = Slider(axalpha, 'alpha', 0, 10, valinit=1, valstep=0.0001)
-    # ssigma = Slider(axsigma, 'sigma', 0, 101, valinit=0, valstep=1)
-    # sc = Slider(axc, 'c', 0, 4, valinit=1)
-    #
-    #
-    # def update(val):
-    #     alpha = salpha.val
-    #     sigma = ssigma.val
-    #     c = sc.val
-    #
-    #     line2.set_ydata(d.loc[d.index[sigma]].iat[0] * np.exp(-alpha * k ** c))
-    #     line1.set_ydata(np.abs(d.loc[d.index[sigma]]))
-    #     plt.draw()
-    #
-    #
-    # salpha.on_changed(update)
-    # ssigma.on_changed(update)
-    # sc.on_changed(update)
-    # plt.show()
+# d = pd.read_csv('d_native.csv'
+#                 , header=0
+#                 , index_col=['sigma']
+#                 )
+#
+# k = np.arange(0, RMAX + 1)
+# fig = plt.figure()
+# ax = plt.axes(xlim=(0, RMAX), ylim=(0, 3))
+# line1, = plt.plot(k, np.abs(d.loc[0.10]), label='$\phi$')
+# alpha = 0
+# line2, = plt.plot(k, d.loc[0.10].iat[0] * np.exp(-alpha * k ** 2), label='$\hat{\phi}$')
+#
+# axalpha = plt.axes([0.15, 0.01, 0.65, 0.03])
+# axsigma = plt.axes([0.15, 0.03, 0.65, 0.03])
+# axc = plt.axes([0.15, 0.06, 0.65, 0.03])
+#
+# salpha = Slider(axalpha, 'alpha', 0, 10, valinit=1, valstep=0.0001)
+# ssigma = Slider(axsigma, 'sigma', 0, 101, valinit=0, valstep=1)
+# sc = Slider(axc, 'c', 0, 4, valinit=1)
+#
+#
+# def update(val):
+#     alpha = salpha.val
+#     sigma = ssigma.val
+#     c = sc.val
+#
+#     line2.set_ydata(d.loc[d.index[sigma]].iat[0] * np.exp(-alpha * k ** c))
+#     line1.set_ydata(np.abs(d.loc[d.index[sigma]]))
+#     plt.draw()
+#
+#
+# salpha.on_changed(update)
+# ssigma.on_changed(update)
+# sc.on_changed(update)
+# plt.show()
 
 
 def sigma_alpha_slider():
@@ -697,24 +817,83 @@ def fi_approx_fi_slider():
 
     line1, = plt.plot(x, fi, label='$\phi$')
     line2, = plt.plot(x, approx_fi, label='$\hat{\phi}$')
+    # d1, = plt.
     # plt.scatter(x_sc, fi.loc[::50], marker = '.')
     plt.legend()
 
     axa = plt.axes([0.15, 0.01, 0.65, 0.03])
-    sa = Slider(axa, 'a', 0, 101, valinit=0, valstep=1)
+    axd = plt.axes([0.15, 0.03, 0.65, 0.03])
+    # axb = plt.axes([0.15, 0.04, 0.65, 0.03])
+    # axc = plt.axes([0.15, 0.06, 0.65, 0.03])
+
+    sa = Slider(axa, 'a', 0, 100, valinit=0, valstep=1)
+    sd = Slider(axd, 'd', 0, 100, valinit=0, valstep=1)
+    # sb = Slider(axb, 'alpha', -3, 0, valinit=0, valstep=0.00001)
+    # sc = Slider(axc, 'c', 0, 3, valinit=0, valstep=0.00001)
+
+    df = pd.read_csv('sigma_alpha_c_err.csv'
+                     , header=0
+                     , index_col=['sigma']
+                     )
 
     def update(val):
         a = sa.val
-        # b = sb.val
-        # c = sc.val
+        # d = sd.val
+        # sb.set_val(df.at[sigmas[a],'alpha'])
+        # sc.set_val(df.at[sigmas[a],'c'])
+        # print(a)
+        # print(len(sigmas))
+        # f = np.abs(1 / (np.log2(1.9 * sigmas[a]) + 0.1)) + 1
+        appr = approx_fi_df.loc[sigmas[a]]
+        fi = fi_df.loc[sigmas[a]]
 
-        line1.set_data(x, fi_df.loc[sigmas[a]])
-        line2.set_data(x, approx_fi_df.loc[sigmas[a]])
+        line1.set_data(x, fi)
+        line2.set_data(x, appr)
         # plt.legend()
         plt.title(f'$\sigma = {sigmas[a]}$')
         plt.draw()
 
-    sa.on_changed(update)
+    kk = np.arange(0, RMAX + 1)
+
+    def update2(val):
+        sigma_ind = sa.val
+        sigma = sigmas[sigma_ind]
+        fi = fi_df.loc[sigma]
+        line1.set_data(x, fi)
+        plt.title(f'$\sigma = {sigma}$')
+        true_d = pd.read_csv('d_native.csv'
+                             , header=0
+                             , index_col=['sigma']
+                             ).loc[sigma]
+        ind = sd.val
+
+        alpha, c, _ = df.loc[sigma]
+        d_0 = true_d.iat[0]
+
+        d = d_0 \
+            * np.exp(alpha *
+                     (kk ** c)) \
+            * (-1.) ** kk
+
+        d[:ind + 1] = true_d.iloc[:ind + 1]
+        approx_fi = []
+
+        for xx in x:
+            fi_val = 0
+            for k in range(-RMAX, RMAX + 1):
+                fi_val += d[abs(k)] * exp(-((xx - k) * (xx - k)) / (2 * sigma * sigma))
+
+            fi_val *= 1 / C(sigma)
+            approx_fi.append(fi_val)
+        # print(len(x),len(approx_fi))
+        line2.set_data(x, approx_fi)
+
+        plt.draw()
+
+    sa.on_changed(update2)
+    sd.on_changed(update2)
+    # sb.on_changed(update2)
+    # sc.on_changed(update2)
     plt.show()
 
 
@@ -725,24 +904,26 @@ def alpha_sigma_plot():
                      )
     # plt.plot('sigma','alpha',data=df.iloc[40:,:])
     fig = plt.figure()
-    # ax = plt.axes(xlim=(0.1, 2.1),ylim=(-0.3, 0))
-    ax = plt.axes(xlim=(0.1, 2.1),ylim=(0, 5))
-    print(df.dtypes)
-    plt.plot('sigma', 'c','', data=df)
+    # ax = plt.axes(xlim=(0.1, 2.1),ylim=(-3, 0))
+    ax = plt.axes(xlim=(0.1, 2.1), ylim=(0, 23))
+    # plt.plot('sigma', 'alpha', '', data=df)
+    plt.plot('sigma', 'c', '', data=df)
     a = 1.9
     sig = np.array(df.loc[:, 'sigma'])
-    ax.set_xticks(sig,minor=True)
-    ax.set_xticks(sig[::10])
+    ax.set_xticks(sig, minor=True)
+    # ax.set_xticks(sig[::10])
     plt.grid(which='minor', alpha=0.4)
     plt.grid(which='major', alpha=0.8)
-    f = np.abs(1 / (np.log2(a * sig) + 0.1)) + 1
+    # f = np.abs(1 / (np.log2(a * sig) + 0.1)) + 1
     # plt.plot(sig[40:], f[40:])
-    plt.plot(sig, f)
+    # plt.plot(sig, f)
     plt.show()
 
+
 if __name__ == '__main__':
-    # pass
+    # play_animation()
     # calculate_alphas2()
     # play_animation2()
+    # calculate_fi()
     fi_approx_fi_slider()
     # alpha_sigma_plot()
