@@ -1,27 +1,25 @@
 import math
 from functools import partial
 from math import exp
-import numpy as np
+
 import matplotlib.pyplot as plt
-import matplotlib as mpl
+import numpy as np
+import pandas as pd
 import tqdm as tqdm
 from matplotlib import animation
-from numba import njit, vectorize, float64, bool_
-import pandas as pd
-import seaborn as sns
-import matplotlib.colorbar as cbar
-from sklearn import preprocessing
-from matplotlib.widgets import Slider, Button
-from sklearn.linear_model import LinearRegression
+from matplotlib.widgets import Slider
+from numba import njit
 from tqdm import tqdm
-from copy import deepcopy
+from utils import deprecated, unused, utility
 
 RMAX = 100
 BOUND_A, BOUND_B = -10, 10
+PARENT_DIRECTORY='C:\\Users\\mrzed\\PycharmProjects\\kursovaya\\gauss'
 
 decorator = partial(np.vectorize, excluded=['sigma'])
 
-
+@unused
+@utility
 def customizable_vectorize(excluded=None):
     if excluded is None:
         excluded = []
@@ -31,15 +29,17 @@ def customizable_vectorize(excluded=None):
             return np.vectorize(func(*args, **kwargs), excluded=excluded)
 
         return wrapped
-
     return inner_decorator
 
 
+@utility
 def log(x, base):
     return np.vectorize(math.log)(x, base)
 
 
-def approx_func(sigma, alpha, c, k= np.arange(0, RMAX + 1)):
+@unused
+@utility
+def approx_func(sigma, alpha, c, k=np.arange(0, RMAX + 1)):
     return d_G_k(0, sigma) \
            * np.exp(alpha * (k ** c)) \
            * (-1.) \
@@ -73,10 +73,8 @@ def d_list(sigma: float) -> list:
 # @customizable_vectorize(excluded=['sigma'])
 @np.vectorize
 def fi_wave(x: np.ndarray, sigma: float):
-    # kk = np.arange(-RMAX, RMAX + 1)
     fi_val = 0
     # d = d_list(sigma)
-    # print(d)
     d = pd.read_csv('gauss/d_native.csv'
                     , header=0
                     , index_col=['sigma']
@@ -84,10 +82,10 @@ def fi_wave(x: np.ndarray, sigma: float):
     d = np.array(d.loc[sigma])
 
     for k in range(-RMAX, RMAX + 1):
-        # print(d[abs(k)])
         fi_val += d[abs(k)] * exp(-((x - k) * (x - k)) / (2 * sigma * sigma))
 
     return 1 / C(sigma) * fi_val
+
 
 
 @np.vectorize
@@ -123,6 +121,8 @@ def approx_fi_wave2(x: np.ndarray, sigma: float):
     return 1 / C(sigma) * fi_val
 
 
+@unused
+@deprecated
 def gradient_desc(sigma, alpha=0, lr=1e-4):
     d = pd.read_csv('gauss/d_native.csv'
                     , header=0
@@ -161,25 +161,32 @@ def gradient_desc(sigma, alpha=0, lr=1e-4):
     return alpha, eps
 
 
+@utility
 def is_pos_def(x):
+    '''проверка на положительную определенность матрицы 2 x 2'''
     return x[0, 0] > 0 and (x[0, 0] * x[1, 1] - x[0, 1] * x[1, 0]) > 0
 
 
+@utility
 class Container:
+    '''очередь из 3 элементов с проверкой равенства
+    хранящимся в контейнере элементам вставляемого элемента'''
+
     def __init__(self):
         self.container = []
 
     def insert(self, elem):
-        if len(self.container) < 3:
+        if len(self.container) < 3:  # если контейнер заполнен не полностью то вставляем элемент в начало
             self.container.append(elem)
             return False
-        elif len(self.container) == 3:
+        elif len(self.container) == 3:  # если контейнер заполнен
+            # проверяем равен ли вставляемый элемент какому-то из элементов в контейнере
             if np.isclose(elem, self.container[0]) \
                     or np.isclose(elem, self.container[1]) \
                     or np.isclose(elem, self.container[2]):
-                self.container.clear()
+                self.container.clear()  # если равен -> очищаем контейнер и возвращаем True
                 return True
-            else:
+            else:  # если не равен -> удаляем последний элемент и вставляем новый элемент в начало, возвращаем False
                 self.container = [self.container[1], self.container[2], elem]
                 return False
         else:
@@ -194,52 +201,54 @@ def gradient_desc2(sigma, alpha=0, c=0, lr=1e-8, h_a=0.005, h_c=0.005):
                     , header=0
                     , index_col=['sigma']
                     )
-
+    # cчитываем значения | d(sigma) | из файла
     d = np.abs(np.array(d.loc[sigma]))[:np.round(sigma * 10).astype(int) + 1]
-    d_0 = d[0]
-    d = d[1:]
-    k = np.arange(1, RMAX + 1)[:np.round(sigma * 10).astype(int)]
+    d_0 = d[0]  # записываем в переменную значение d_0
+    d = d[1:]  # в качестве целевых значений будем использовать остальные коэффициенты из набора | d(sigma) |
+    k = np.arange(1, RMAX + 1)[
+        :np.round(sigma * 10).astype(int)]  # номера коэффициентов (обнуляем коэффиенты d_i, i > [sigma*10])
 
-    mse = lambda x, y: 1 / len(x) * np.sum((x - y) ** 2)
-    eps = 1
-    prev_eps = 1
-    cnt = 0
-    max_repeat = 10
-    max_iter = 100_000
+    mse = lambda x, y: 1 / len(x) * np.sum((x - y) ** 2)  # функция ошибки
+    eps = 1  # начальное значение ошибки
+    cnt = 0  # счетчик повторений значений ошибок
+    max_repeat = 10  # число максимального количества повторений значений ошибок
+    max_iter = 100_000  # число максимального количества итераций поиска новых значений коэффициентов alpha и c
 
-    flag = True
+    flag = True  # флаг выхода из цикла
     print('сигма:', sigma)
     i = 0
     while eps > lr and flag:
 
-        d_pred = d_0 * np.exp(alpha * (k ** c))
-        eps = mse(d, d_pred)
-        if container.insert(eps):
-            cnt += 1
-        # print(container.container, cnt)
-        # if prev_eps == eps:
-        #     cnt += 1
-        if cnt > max_repeat:
+        d_pred = d_0 * np.exp(alpha * (k ** c))  # считаем начальное значение приближенных коэффициентов d_
+        eps = mse(d, d_pred)  # считаем ошибку вычислений
+        if container.insert(eps):  # если ошибка равна одной из ошибок на предыдущих итерациях
+            cnt += 1  # увеличиваем значение счетчика
+        if cnt > max_repeat:  # если значение счетчика превышает критическое
             cnt = 0
-            flag = False
-        else:
+            flag = False  # выходим из цикла вычислений
+        else:  # иначе
             try:
+                # Находим минимум функции ошибки MSE:
+                # считаем частную производную ф-ции MSE по переменной alpha
                 alpha_derivative = 1 / RMAX * (
                     np.sum(-d_0 * (k ** c)
                            * np.exp(alpha
                                     * (k ** c))
                            * 2 * (d - d_pred))
                 )
+                # считаем частную производную ф-ции MSE по переменной c
                 c_derivative = 1 / RMAX * (
                     np.sum(-d_0 * alpha * (k ** c)
                            * np.log(k)
                            * np.exp(alpha * (k ** c))
                            * 2 * (d - d_pred)))
+                # считаем 2-ю частную производную ф-ции MSE по переменной alpha
                 alpha2_derivative = 1 / RMAX * \
                                     np.sum(
                                         -2 * d * (k ** (2 * c)) * d_0 * np.exp((k ** c) * alpha) \
                                         + 4 * (k ** (2 * c)) * (d_0 ** 2) * np.exp(2 * (k ** c) * alpha)
                                     )
+                # считаем 2-ю частную производную ф-ции MSE по переменным alpha и c
                 alpha_c_derivative = 1 / RMAX * \
                                      np.sum(
                                          4 * (k ** (2 * c)) * alpha * (d_0 ** 2) * np.exp(
@@ -248,6 +257,7 @@ def gradient_desc2(sigma, alpha=0, c=0, lr=1e-8, h_a=0.005, h_c=0.005):
                                          - 2 * d * (k ** (2 * c)) * alpha * d_0 * np.log(k) * np.exp((k ** c) * alpha) \
                                          + 2 * (k ** c) * (d_0 ** 2) * np.exp(2 * (k ** c) * alpha) * np.log(k)
                                      )
+                # считаем 2-ю частную производную ф-ции MSE по переменной с
                 c2_derivative = 1 / RMAX * \
                                 np.sum(
                                     4 * (k ** (2 * c)) * (alpha ** 2) * (d_0 ** 2) * np.exp(2 * (k ** c) * alpha) * (
@@ -256,38 +266,35 @@ def gradient_desc2(sigma, alpha=0, c=0, lr=1e-8, h_a=0.005, h_c=0.005):
                                     - 2 * d * (k ** (2 * c)) * (alpha ** 2) * d_0 * (np.log(k) ** 2) * np.exp(
                                         (k ** c) * alpha) \
                                     + 2 * (k ** c) * alpha * (d_0 ** 2) * np.exp(2 * (k ** c) * alpha) * (
-                                                np.log(k) ** 2)
+                                            np.log(k) ** 2)
                                 )
-
+                # составляем матрицу Гессе
                 hessian = np.array([
                     [alpha2_derivative, alpha_c_derivative],
                     [alpha_c_derivative, c2_derivative]
                 ])
-                # print(hessian)
-                if is_pos_def(hessian):
-                    _hessian = np.linalg.inv(hessian)
-                    grad = np.array([[alpha_derivative], [c_derivative]])
-                    _d = (_hessian @ grad).flatten()
+                if is_pos_def(hessian):  # если матрица Гессе положительно определена
+                    _hessian = np.linalg.inv(hessian)  # находим обратную матрицу для гессиана
+                    grad = np.array([[alpha_derivative], [c_derivative]])  # составляем вектор градиента
+                    _d = (_hessian @ grad).flatten()  # считаем значения прирощений коэффициентов alpha и c
                     alpha -= h_a * _d[0]
                     c -= h_c * _d[1]
-                else:
+                else:  # если матрица Гессе не положительно определена
+                    # считаем новые значения alpha и с учитывая только первую производную ф-ции MSE
                     alpha -= h_a * alpha_derivative
                     c -= h_c * c_derivative
-                # if c > 4:
-                #     c = 4
                 print(f'\t{i}) альфа:', alpha, 'степень:', c, 'ошибка:', eps, 'сигма:', sigma)
-                if i > max_iter:
-                    flag = False
-                prev_eps = eps
-                # container.insert(prev_eps)
-                i += 1
-            except OverflowError:
+                if i > max_iter:  # если количество итераций превысило критическое значение
+                    flag = False  # выходим из цикла
+                i += 1  # увеличиваем счетчик итераций
+            except OverflowError:  # если вычисленное значение приближенных коэффициентов d является неадекватным
                 print("OVERFLOW!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-                break
+                break  # выходим из цикла
 
     return alpha, c, eps, h_a, h_c
 
 
+@deprecated
 def gradient_desc3(sigma, alpha=0, c=0, lr=1e-6, h_a=0.5, h_c=0.5):
     d = pd.read_csv('gauss/d_native.csv'
                     , header=0
@@ -341,7 +348,8 @@ def gradient_desc3(sigma, alpha=0, c=0, lr=1e-6, h_a=0.5, h_c=0.5):
 
     return alpha, c, eps, h_a, h_c
 
-
+@unused
+@deprecated
 def newton_gauss(sigma, h_a, h_c, alpha=0, c=0, lr=1e-6):
     d = pd.read_csv('gauss/d_native.csv'
                     , header=0
@@ -419,6 +427,7 @@ def newton_gauss(sigma, h_a, h_c, alpha=0, c=0, lr=1e-6):
     return alpha, c, eps, h_a, h_c
 
 
+@deprecated
 def calculate_alphas():
     d = pd.read_csv('gauss/d_native.csv'
                     , header=0
@@ -429,7 +438,6 @@ def calculate_alphas():
     for sigma in sigmas:
         alpha, err = gradient_desc2(sigma)
         a.append([sigma, alpha, err])
-    # print(a)
     df = pd.DataFrame(a, columns=['sigma', 'alpha', 'error'])
     df.set_index('sigma', inplace=True)
     print(df)
@@ -451,23 +459,25 @@ def calculate_alphas2():
     alpha, c = 0, 0
     h_a, h_c = 0.05, 0.05
     for sigma in sigmas:
-        _alpha, _c, _ = coeffs.loc[sigma]
+        _alpha, _c, _ = coeffs.loc[sigma]  # начальные значения alpha и c
         # _alpha, _c, _ = 0., 0., 0.
-        alpha, c, err, h_a, h_c = gradient_desc2(sigma, alpha=_alpha, c=_c, h_a=h_a, h_c=h_c)
+        alpha, c, err, h_a, h_c = gradient_desc2(sigma, alpha=_alpha, c=_c, h_a=h_a,
+                                                 h_c=h_c)  # получаем новые значения коэффициентов
         # alpha, c, err = coeffs.loc[sigma]
-        while np.isnan(alpha) or np.isnan(c):
+        while np.isnan(alpha) or np.isnan(c):  # если коэффициенты равны NaN
             print('\n', sigma, '\n')
-            ind = np.round((np.round(sigma, 2) - 0.1) / 0.02).astype(int)
-            _alpha, _c, _err = coeffs.iloc[ind - 1]
-            while np.isnan(_alpha):
+            ind = np.round((np.round(sigma, 2) - 0.1) / 0.02).astype(int)  # расчитываем индекс сигмы из таблицы
+            _alpha, _c, _err = coeffs.iloc[ind - 1]  # получаем значения из предыдущей строки с коэффициентами
+            while np.isnan(_alpha):  # если эти значения тоже NaN
                 ind -= 1
-                _alpha, _c, _err = coeffs.iloc[ind - 1]
-            #
-            alpha, c, err, h_a, h_c = gradient_desc2(sigma, alpha=_alpha, c=_c, h_a=h_a, h_c=h_c)
+                _alpha, _c, _err = coeffs.iloc[ind - 1]  # получаем значения из предыдущей строки с коэффициентами
+            alpha, c, err, h_a, h_c = gradient_desc2(sigma, alpha=_alpha, c=_c, h_a=h_a,
+                                                     h_c=h_c)  # пересчитыеваем значения коэффициентов начиная с другого начального приближения
+            # половиним шаги
             h_a /= 2
             h_c /= 2
+        # записываем коэффициенты в список
         a.append([sigma, alpha, c, err])
-    # print(a)
     df = pd.DataFrame(a, columns=['sigma', 'alpha', 'c', 'error'])
     df.set_index('sigma', inplace=True)
     print(df)
@@ -475,12 +485,12 @@ def calculate_alphas2():
     return df
 
 
+@deprecated
 @np.vectorize
 def approx_fi_wave(x: np.ndarray, sigma: float):
-    kk = np.arange(0, RMAX + 1)
+    '''функция расчета приближенного значения коэфициентов d'''
+    kk = np.arange(0, RMAX + 1)  # список номеров коэффициентов
     fi_val = 0
-    # d = d_list(sigma)
-    # print(d)
     d_0 = pd.read_csv('gauss/d_native.csv'
                       , header=0
                       , index_col=['sigma']
@@ -494,7 +504,6 @@ def approx_fi_wave(x: np.ndarray, sigma: float):
     d = d_0 * np.exp(alpha * np.abs(kk)) * (-1.) ** kk
 
     for k in range(-RMAX, RMAX + 1):
-        # print(d[abs(k)])
         fi_val += d[abs(k)] * exp(-((x - k) * (x - k)) / (2 * sigma * sigma))
 
     return 1 / C(sigma) * fi_val
@@ -521,88 +530,17 @@ def calculate_fi():
     df1.to_csv('gauss/sigma_approx_fi2.csv')
 
 
-def write_d_to_csv():
+def calculate_d(a=0.1, b=2.1, h=0.02):
     df_list = []
-    k = np.linspace(0.1, 2.1, RMAX + 1)
-    for sigma in k:
+    sigmas = np.arange(a, b + h, h)
+    for sigma in sigmas:
         df_list.append(d_list(sigma))
-    df = pd.DataFrame(df_list, index=pd.Index(k, name='sigma'))
+
+    df = pd.DataFrame(df_list, index=pd.Index(sigmas, name='sigma'))
     df.to_csv('gauss/d_native.csv')
 
-    # if __name__ == '__main__':
-    #     sigma = 1
-    #     a, b = 8.007502736216965, 0.8211001
-    #     ln_c = -1.4524905467690978
-    #
-    #     # alpha = 0.6
-    #
-    #     kk = np.arange(RMAX + 1)
-    #     y = np.abs(d_list(sigma))
-    #     regr = LinearRegression()
-    #     regr.fit(np.abs(kk).reshape(-1, 1), np.log(y).reshape(-1, 1))
-    #     alpha = regr.coef_[0]
-    #     print(alpha)
-    #     intercept = regr.intercept_
-    #
-    #     y1 = np.exp(alpha * np.abs(kk))  # + intercept
-    #
-    #     plt.plot(y)
-    #     plt.plot(y1)
-    #     plt.show()
 
-
-# if __name__ == '__main__':
-#     df = pd.read_csv('gauss/sigma_alpha_c_err2.csv'
-#                      , header=0
-#                      , index_col=['sigma']
-#                      )
-#
-#     fi_list, approx_fi_list = [], []
-#
-#     for sigma in tqdm(df.index):
-#         x = np.linspace(BOUND_A, BOUND_B, 1000)
-#         # y = fi_wave(x, sigma)
-#         y1 = approx_fi_wave2(x, sigma)
-#         # fi_list.append(y.tolist())
-#         approx_fi_list.append(y1.tolist())
-#
-#     # df1 = pd.DataFrame(fi_list, index=df.index)
-#     # df1.to_csv('gauss/sigma_fi.csv')
-#     df1 = pd.DataFrame(approx_fi_list, index=df.index)
-#     df1.to_csv('gauss/sigma_approx_fi2.csv')
-
-# df1 = pd.read_csv('gauss/sigma_fi.csv'
-#                   , header=0
-#                   , index_col='sigma'
-#                   )
-#
-# print(df1)
-# def makeArray(text):
-#     return np.fromstring(text, sep=' ')
-#
-# print(np.fromstring(df1.at[0.10,'fi'], sep=' '))
-# df.loc[:,'fi'] = df.loc[:,'fi'].apply(makeArray)
-# df.loc[:,'approx_fi'] = df.loc[:,'approx_fi'].apply(makeArray)
-# for i in range(y := df1.iat[0, 0]):
-#     print(i, y[i])
-# print(df1)
-# fig, ax = plt.subplots(figsize=(12 / 10 * 8, 10 / 12 * 8))
-# plt.grid()
-# plt.plot(x, y)
-# plt.plot(x, y1)
-# plt.show()
-# fig = plt.figure()
-
-
-def write_d_abs_to_csv():
-    df_list = []
-    k = np.linspace(0, 2, RMAX + 1)
-    for sigma in k:
-        df_list.append(np.abs(d_list(sigma)))
-    df = pd.DataFrame(df_list, index=pd.Index(k, name='sigma'))
-    df.to_csv('gauss/d_0-2.csv')
-
-
+@deprecated
 def play_animation():
     df = pd.read_csv('gauss/sigma_alpha_err.csv'
                      , header=0
@@ -736,48 +674,7 @@ def sigma_d_slider():
     plt.show()
 
 
-# if __name__ == '__main__':
-# calculate_alphas2()
-# play_animation2()
-
-
-# d = pd.read_csv('gauss/d_native.csv'
-#                 , header=0
-#                 , index_col=['sigma']
-#                 )
-#
-# k = np.arange(0, RMAX + 1)
-# fig = plt.figure()
-# ax = plt.axes(xlim=(0, RMAX), ylim=(0, 3))
-# line1, = plt.plot(k, np.abs(d.loc[0.10]), label='$\phi$')
-# alpha = 0
-# line2, = plt.plot(k, d.loc[0.10].iat[0] * np.exp(-alpha * k ** 2), label='$\hat{\phi}$')
-#
-# axalpha = plt.axes([0.15, 0.01, 0.65, 0.03])
-# axsigma = plt.axes([0.15, 0.03, 0.65, 0.03])
-# axc = plt.axes([0.15, 0.06, 0.65, 0.03])
-#
-# salpha = Slider(axalpha, 'alpha', 0, 10, valinit=1, valstep=0.0001)
-# ssigma = Slider(axsigma, 'sigma', 0, 101, valinit=0, valstep=1)
-# sc = Slider(axc, 'c', 0, 4, valinit=1)
-#
-#
-# def update(val):
-#     alpha = salpha.val
-#     sigma = ssigma.val
-#     c = sc.val
-#
-#     line2.set_ydata(d.loc[d.index[sigma]].iat[0] * np.exp(-alpha * k ** c))
-#     line1.set_ydata(np.abs(d.loc[d.index[sigma]]))
-#     plt.draw()
-#
-#
-# salpha.on_changed(update)
-# ssigma.on_changed(update)
-# sc.on_changed(update)
-# plt.show()
-
-
+@unused
 def sigma_alpha_slider():
     df = pd.read_csv('gauss/sigma_alpha_err.csv'
                      , header=0
