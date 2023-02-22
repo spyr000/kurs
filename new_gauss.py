@@ -10,13 +10,14 @@ from matplotlib import animation
 from matplotlib.widgets import Slider
 from numba import njit
 from tqdm import tqdm
-from utils import deprecated, unused, utility
+from utils import deprecated, unused, utility, moved
 
 RMAX = 100
 BOUND_A, BOUND_B = -10, 10
-PARENT_DIRECTORY='C:\\Users\\mrzed\\PycharmProjects\\kursovaya\\gauss'
+PARENT_DIRECTORY = 'C:\\Users\\mrzed\\PycharmProjects\\kursovaya\\gauss'
 
 decorator = partial(np.vectorize, excluded=['sigma'])
+
 
 @unused
 @utility
@@ -29,6 +30,7 @@ def customizable_vectorize(excluded=None):
             return np.vectorize(func(*args, **kwargs), excluded=excluded)
 
         return wrapped
+
     return inner_decorator
 
 
@@ -87,7 +89,6 @@ def fi_wave(x: np.ndarray, sigma: float):
     return 1 / C(sigma) * fi_val
 
 
-
 @np.vectorize
 def approx_fi_wave2(x: np.ndarray, sigma: float):
     kk = np.arange(0, RMAX + 1)
@@ -121,9 +122,42 @@ def approx_fi_wave2(x: np.ndarray, sigma: float):
     return 1 / C(sigma) * fi_val
 
 
+@moved
+@utility
+def is_pos_def(x):
+    '''проверка на положительную определенность матрицы 2 x 2'''
+    return x[0, 0] > 0 and (x[0, 0] * x[1, 1] - x[0, 1] * x[1, 0]) > 0
+
+@moved
+@utility
+class Container:
+    '''очередь из 3 элементов с проверкой равенства
+    хранящимся в контейнере элементам вставляемого элемента'''
+
+    def __init__(self):
+        self.container = []
+
+    def insert(self, elem):
+        if len(self.container) < 3:  # если контейнер заполнен не полностью то вставляем элемент в начало
+            self.container.append(elem)
+            return False
+        elif len(self.container) == 3:  # если контейнер заполнен
+            # проверяем равен ли вставляемый элемент какому-то из элементов в контейнере
+            if np.isclose(elem, self.container[0]) \
+                    or np.isclose(elem, self.container[1]) \
+                    or np.isclose(elem, self.container[2]):
+                self.container.clear()  # если равен -> очищаем контейнер и возвращаем True
+                return True
+            else:  # если не равен -> удаляем последний элемент и вставляем новый элемент в начало, возвращаем False
+                self.container = [self.container[1], self.container[2], elem]
+                return False
+        else:
+            self.container.clear()
+            return False
+
 @unused
 @deprecated
-def gradient_desc(sigma, alpha=0, lr=1e-4):
+def gradient_desc_for_one_param(sigma, alpha=0, lr=1e-4):
     d = pd.read_csv('gauss/d_native.csv'
                     , header=0
                     , index_col=['sigma']
@@ -161,40 +195,8 @@ def gradient_desc(sigma, alpha=0, lr=1e-4):
     return alpha, eps
 
 
-@utility
-def is_pos_def(x):
-    '''проверка на положительную определенность матрицы 2 x 2'''
-    return x[0, 0] > 0 and (x[0, 0] * x[1, 1] - x[0, 1] * x[1, 0]) > 0
-
-
-@utility
-class Container:
-    '''очередь из 3 элементов с проверкой равенства
-    хранящимся в контейнере элементам вставляемого элемента'''
-
-    def __init__(self):
-        self.container = []
-
-    def insert(self, elem):
-        if len(self.container) < 3:  # если контейнер заполнен не полностью то вставляем элемент в начало
-            self.container.append(elem)
-            return False
-        elif len(self.container) == 3:  # если контейнер заполнен
-            # проверяем равен ли вставляемый элемент какому-то из элементов в контейнере
-            if np.isclose(elem, self.container[0]) \
-                    or np.isclose(elem, self.container[1]) \
-                    or np.isclose(elem, self.container[2]):
-                self.container.clear()  # если равен -> очищаем контейнер и возвращаем True
-                return True
-            else:  # если не равен -> удаляем последний элемент и вставляем новый элемент в начало, возвращаем False
-                self.container = [self.container[1], self.container[2], elem]
-                return False
-        else:
-            self.container.clear()
-            return False
-
-
-def gradient_desc2(sigma, alpha=0, c=0, lr=1e-8, h_a=0.005, h_c=0.005):
+@moved
+def newton(sigma, alpha=0, c=0, lr=1e-8, h_a=0.005, h_c=0.005):
     container = Container()
 
     d = pd.read_csv('gauss/d_native.csv'
@@ -293,9 +295,8 @@ def gradient_desc2(sigma, alpha=0, c=0, lr=1e-8, h_a=0.005, h_c=0.005):
 
     return alpha, c, eps, h_a, h_c
 
-
 @deprecated
-def gradient_desc3(sigma, alpha=0, c=0, lr=1e-6, h_a=0.5, h_c=0.5):
+def gradient_desc(sigma, alpha=0, c=0, lr=1e-6, h_a=0.5, h_c=0.5):
     d = pd.read_csv('gauss/d_native.csv'
                     , header=0
                     , index_col=['sigma']
@@ -348,9 +349,10 @@ def gradient_desc3(sigma, alpha=0, c=0, lr=1e-6, h_a=0.5, h_c=0.5):
 
     return alpha, c, eps, h_a, h_c
 
+
 @unused
 @deprecated
-def newton_gauss(sigma, h_a, h_c, alpha=0, c=0, lr=1e-6):
+def gauss_newton(sigma, h_a, h_c, alpha=0, c=0, lr=1e-6):
     d = pd.read_csv('gauss/d_native.csv'
                     , header=0
                     , index_col=['sigma']
@@ -436,7 +438,7 @@ def calculate_alphas():
     sigmas = np.array(d.index)
     a = []
     for sigma in sigmas:
-        alpha, err = gradient_desc2(sigma)
+        alpha, err = newton(sigma)
         a.append([sigma, alpha, err])
     df = pd.DataFrame(a, columns=['sigma', 'alpha', 'error'])
     df.set_index('sigma', inplace=True)
@@ -461,8 +463,8 @@ def calculate_alphas2():
     for sigma in sigmas:
         _alpha, _c, _ = coeffs.loc[sigma]  # начальные значения alpha и c
         # _alpha, _c, _ = 0., 0., 0.
-        alpha, c, err, h_a, h_c = gradient_desc2(sigma, alpha=_alpha, c=_c, h_a=h_a,
-                                                 h_c=h_c)  # получаем новые значения коэффициентов
+        alpha, c, err, h_a, h_c = newton(sigma, alpha=_alpha, c=_c, h_a=h_a,
+                                         h_c=h_c)  # получаем новые значения коэффициентов
         # alpha, c, err = coeffs.loc[sigma]
         while np.isnan(alpha) or np.isnan(c):  # если коэффициенты равны NaN
             print('\n', sigma, '\n')
@@ -471,8 +473,8 @@ def calculate_alphas2():
             while np.isnan(_alpha):  # если эти значения тоже NaN
                 ind -= 1
                 _alpha, _c, _err = coeffs.iloc[ind - 1]  # получаем значения из предыдущей строки с коэффициентами
-            alpha, c, err, h_a, h_c = gradient_desc2(sigma, alpha=_alpha, c=_c, h_a=h_a,
-                                                     h_c=h_c)  # пересчитыеваем значения коэффициентов начиная с другого начального приближения
+            alpha, c, err, h_a, h_c = newton(sigma, alpha=_alpha, c=_c, h_a=h_a,
+                                             h_c=h_c)  # пересчитыеваем значения коэффициентов начиная с другого начального приближения
             # половиним шаги
             h_a /= 2
             h_c /= 2
@@ -604,72 +606,74 @@ def sigma_d_slider():
                       , header=0
                       , index_col=['sigma']
                       )
-    sig = np.array(df.index)
-    k = np.arange(0, RMAX + 1)
+    sigmas = np.array(df.index)
+    k = np.arange(0, RMAX + 1)  # набор координат по оси x
     fig = plt.figure()
     ax = plt.axes(xlim=(0, 101), ylim=(0, 1))
-    line1, = ax.plot([], [], lw=2)
-    line2, = ax.plot([], [], lw=0.5)
-    text2 = ax.text(0.55, 0.85, '', transform=ax.transAxes)
-    text3 = ax.text(0.55, 0.75, '', transform=ax.transAxes)
+    true_d_line, = ax.plot([], [], lw=2)  # линия для настоящих коэффициетов d
+    pred_d_line, = ax.plot([], [], lw=0.5)  # линия для приближенных коэффициетов d
+    error_text = ax.text(0.55, 0.85, '', transform=ax.transAxes)  # текст для вывода ошибки
+    sigma_text = ax.text(0.55, 0.75, '', transform=ax.transAxes)  # текст для вывода значения sigma
 
     d_list = []
     d_pred_list = []
 
-    axsigm = plt.axes([0.15, 0.01, 0.65, 0.03])
-    axalpha = plt.axes([0.15, 0.03, 0.65, 0.03])
-    axc = plt.axes([0.15, 0.05, 0.65, 0.03])
+    axc = plt.axes([0.15, 0.05, 0.65, 0.03])  # ось ползунка для параметра c
+    axalpha = plt.axes([0.15, 0.03, 0.65, 0.03])  # ось ползунка для параметра alpha
+    axsigm = plt.axes([0.15, 0.01, 0.65, 0.03])  # ось ползунка для параметра sigma
 
-    ssigm = Slider(axsigm, 'a', 0, 100, valinit=0, valstep=1)
-    salpha = Slider(axalpha, 'a', -2, 0)
-    sc = Slider(axc, 'a', 0, 3)
+    sc = Slider(axc, 'с', 0, 3)  # ползунок для параметра c
+    salpha = Slider(axalpha, 'a', -2, 0)  # ползунок для параметра alpha
+    ssigm = Slider(axsigm, '$\sigma$', 0, 100, valinit=0, valstep=1)  # ползунок для параметра sigma
 
-    def animate(i):
-        x = np.abs(d_list[i])
-
-        sigma = df.index[i]
-        x[np.round(sigma * 10).astype(int):] = 0
-        # y = np.abs(d_pred_list[i])
-        alpha = df.at[sigma, 'alpha']
-        salpha.set_val(alpha)
-        c = df.at[sigma, 'c']
-        sc.set_val(c)
-        d_0 = df1.loc[sigma].iat[0]
-        y = d_0 * np.exp(alpha * (k ** c))
-
-        line1.set_data(k, x)
-        line1.set_marker('.')
-        line1.set_label('d')
-        text2.set_text(('ошибка: ' + str(df.iat[i, 2])))
-        text3.set_text(('$\sigma$: ' + str(sig[i])))
-        line2.set_data(k, y, )
-        line2.set_marker('.')
-        return line1, line2, text2, text3,
-
-    def update(val):
-        alpha = salpha.val
-        c = sc.val
-        sigma = df.index[ssigm.val]
-        d_0 = df1.loc[sigma].iat[0]
-        y = d_0 * np.exp(alpha * (k ** c))
-        line2.set_data(k, y, )
-        line2.set_marker('.')
-
-    for i in df.index:
-        alpha = df.at[i, 'alpha']
-        c = df.at[i, 'c']
-        d = np.array(df1.loc[i])
+    for i in df.index:  # проходимся по всем сигмам
+        alpha = df.at[i, 'alpha']  # считываем параметр alpha
+        c = df.at[i, 'c']  # считываем параметр c
+        d = np.array(df1.loc[i])  # считываем коэффициенты d
         d_pred = d[0] \
                  * np.exp(alpha * (k ** c)) \
                  * (-1.) \
                  ** k
-        d_list.append(d)
-        d_pred_list.append(d_pred)
+        d_list.append(d)  # записываем в список с коэффициентами d для разных сигм
+        d_pred_list.append(d_pred)  # записываем в список с приближенными коэффициентами d для разных сигм
 
-    ssigm.on_changed(animate)
-    salpha.on_changed(update)
-    sc.on_changed(update)
+    def update_sigma(i):
+        true_d = np.abs(d_list[i])  # считываем настоящие коэффициенты d
+        sigma = df.index[i]
+        true_d[np.round(sigma * 10).astype(int):] = 0  # обнуляем маловлияющие коэффициенты d
+        alpha = df.at[sigma, 'alpha']  # считываем значение параметра alpha
+        salpha.set_val(alpha)  # устанавливаем значение параметра alpha
+        c = df.at[sigma, 'c']  # считываем значение параметра с
+        sc.set_val(c)  # устанавливаем значение ползунка с
+        d_0 = df1.loc[sigma].iat[0]
+        pred_d = d_0 * np.exp(alpha * (k ** c))  # пересчитываем приближенные коэффициенты d
 
+        true_d_line.set_data(k, true_d)
+        # обновляем координаты линии настоящих коэффициетов d
+        true_d_line.set_marker('.')
+        true_d_line.set_label('d')
+        # обновляем координаты линии приближенных коэффициетов d
+        pred_d_line.set_data(k, pred_d, )
+        pred_d_line.set_marker('.')
+
+        error_text.set_text(('ошибка: ' + str(df.iat[i, 2])))  # обновляем текст для вывода ошибки
+        sigma_text.set_text(('$\sigma$: ' + str(sigmas[i])))  # обновляем текст для вывода значения sigma
+
+        return true_d_line, pred_d_line, error_text, sigma_text,
+
+    def update_params(val):
+        alpha = salpha.val
+        c = sc.val
+        sigma = df.index[ssigm.val]
+        d_0 = df1.loc[sigma].iat[0]
+        pred_d = d_0 * np.exp(alpha * (k ** c))
+        # обновляем координаты линии приближенных коэффициетов d
+        pred_d_line.set_data(k, pred_d, )
+        pred_d_line.set_marker('.')
+
+    ssigm.on_changed(update_sigma)
+    salpha.on_changed(update_params)
+    sc.on_changed(update_params)
     plt.grid()
     plt.show()
 
@@ -735,57 +739,35 @@ def fi_approx_fi_slider():
     ax.grid(which='minor', alpha=0.2)
     ax.grid(which='major', alpha=0.8)
 
-    line1, = plt.plot(x, fi, label='$\phi$')
-    line2, = plt.plot(x, approx_fi, label='$\hat{\phi}$')
-    # d1, = plt.
-    # plt.scatter(x_sc, fi.loc[::50], marker = '.')
+    true_fi_line, = plt.plot(x, fi, label='$\phi$')  # линия для настоящей узловой функции fi
+    line2, = plt.plot(x, approx_fi, label='$\hat{\phi}$')  # линия для приближенной узловой функции fi
     plt.legend()
 
-    axa = plt.axes([0.15, 0.01, 0.65, 0.03])
-    axd = plt.axes([0.15, 0.03, 0.65, 0.03])
-    # axb = plt.axes([0.15, 0.04, 0.65, 0.03])
-    # axc = plt.axes([0.15, 0.06, 0.65, 0.03])
+    axsigma = plt.axes([0.15, 0.01, 0.65, 0.03])  # ось ползунка для параметра sigma
+    axindex = plt.axes([0.15, 0.03, 0.65, 0.03])  # ось ползунка для параметра index
 
-    sa = Slider(axa, 'a', 0, 100, valinit=0, valstep=1)
-    sd = Slider(axd, 'd', 0, 100, valinit=0, valstep=1)
-    # sb = Slider(axb, 'alpha', -3, 0, valinit=0, valstep=0.00001)
-    # sc = Slider(axc, 'c', 0, 3, valinit=0, valstep=0.00001)
+    ssigma = Slider(axsigma, '$\sigma$', 0, 100, valinit=0, valstep=1)  # ползунок для параметра sigma
+    sindex = Slider(axindex, 'index', 0, 100, valinit=0, valstep=1)  # ползунок для параметра index
 
     df = pd.read_csv('gauss/sigma_alpha_c_err.csv'
                      , header=0
                      , index_col=['sigma']
                      )
-
-    def update(val):
-        a = sa.val
-        # d = sd.val
-        # sb.set_val(df.at[sigmas[a],'alpha'])
-        # sc.set_val(df.at[sigmas[a],'c'])
-        # print(a)
-        # print(len(sigmas))
-        # f = np.abs(1 / (np.log2(1.9 * sigmas[a]) + 0.1)) + 1
-        appr = approx_fi_df.loc[sigmas[a]]
-        fi = fi_df.loc[sigmas[a]]
-
-        line1.set_data(x, fi)
-        line2.set_data(x, appr)
-        # plt.legend()
-        plt.title(f'$\sigma = {sigmas[a]}$')
-        plt.draw()
-
-    kk = np.arange(0, RMAX + 1)
-
-    def update2(val):
-        sigma_ind = sa.val
-        sigma = sigmas[sigma_ind]
-        fi = fi_df.loc[sigma]
-        line1.set_data(x, fi)
-        plt.title(f'$\sigma = {sigma}$')
-        true_d = pd.read_csv('gauss/d_native.csv'
+    ddf = pd.read_csv('gauss/d_native.csv'
                              , header=0
                              , index_col=['sigma']
-                             ).loc[sigma]
-        ind = sd.val
+                             )
+
+    kk = np.arange(0, RMAX + 1) # значения номеров коэффициентов d соответствующие координате x графика
+
+    def update(val):
+        sigma_ind = ssigma.val # считываем значение индекса sigma из значения ползунка
+        sigma = sigmas[sigma_ind]
+        fi = fi_df.loc[sigma] # считываем значения настоящей узловой функции fi
+        true_fi_line.set_data(x, fi) # обновляем координаты линии настоящей узловой функции fi
+        plt.title(f'$\sigma = {sigma}$')
+        true_d = ddf.loc[sigma]
+        ind = sindex.val  # считываем значение индекса из значения ползунка
 
         alpha, c, _ = df.loc[sigma]
         d_0 = true_d.iat[0]
@@ -795,28 +777,26 @@ def fi_approx_fi_slider():
                      (kk ** c)) \
             * (-1.) ** kk
 
-        d[:ind + 1] = true_d.iloc[:ind + 1]
+        d[:ind + 1] = true_d.iloc[
+                      :ind + 1]  # заменяем ind первых приближенных коэффициентов d настоящими коэффициентами
         # d[ind:] = true_d.iloc[ind:]
         # d[np.round(sigma*10).astype(int):]=0
 
         approx_fi = []
 
-        for xx in x:
+        for xx in x:  # пересчитываем значение приближенной узловой функции
             fi_val = 0
             for k in range(-RMAX, RMAX + 1):
                 fi_val += d[abs(k)] * exp(-((xx - k) * (xx - k)) / (2 * sigma * sigma))
 
             fi_val *= 1 / C(sigma)
             approx_fi.append(fi_val)
-        # print(len(x),len(approx_fi))
         line2.set_data(x, approx_fi)
 
         plt.draw()
 
-    sa.on_changed(update2)
-    sd.on_changed(update2)
-    # sb.on_changed(update2)
-    # sc.on_changed(update2)
+    ssigma.on_changed(update)
+    sindex.on_changed(update)
     plt.show()
 
 
