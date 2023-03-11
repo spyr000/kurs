@@ -61,7 +61,7 @@ def get_y(sigma, x):
     # alpha = np.exp(a / (sigma + b) + ln_c)
     # print(alpha)
     d = pd.read_csv('d_0-2.csv', header=0, index_col=['sigma']).loc[sigma][0]
-    alpha = pd.read_csv('sigma-alpha-norm_0-2.csv', header=0, index_col=['sigma']).loc[sigma].loc['alpha']
+    alpha = pd.read_csv('../sigma-alpha-norm_0-2.csv', header=0, index_col=['sigma']).loc[sigma].loc['alpha']
     # print(alpha)
     out = d * np.exp(-alpha * np.abs(x))
     return out
@@ -151,7 +151,7 @@ def write_coeffs_to_csv():
 
 
 def get_a_sigma_coeffs():
-    df = pd.read_csv('sigma-alpha-norm_0-2.csv')
+    df = pd.read_csv('../sigma-alpha-norm_0-2.csv')
     ln = 8
     x = np.array(df['sigma'])[ln:].reshape(-1, 1)
     # x = x[x >= 0.2]
@@ -202,7 +202,7 @@ def get_a_sigma_coeffs():
 
 if __name__ == '__main__':
     # write_coeffs_to_csv()
-    df = pd.read_csv('sigma-alpha-norm_0-2.csv', header=0, usecols=['sigma', 'alpha', 'norm'])
+    df = pd.read_csv('../sigma-alpha-norm_0-2.csv', header=0, usecols=['sigma', 'alpha', 'norm'])
     ln = 8
     f, ax = plt.subplots()
     plt.grid()

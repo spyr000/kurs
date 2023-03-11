@@ -54,11 +54,11 @@ def calculate_d(a=0.1, b=2.1, h=0.02):
 
 
 def calculate_alphas2():
-    d = pd.read_csv('gauss/d_native.csv'
+    d = pd.read_csv('gauss_resources/d_native.csv'
                     , header=0
                     , index_col=['sigma']
                     )
-    coeffs = pd.read_csv('gauss/sigma_alpha_c_err.csv'
+    coeffs = pd.read_csv('gauss_resources/sigma_alpha_c_err.csv'
                          , header=0
                          , index_col=['sigma']
                          )
