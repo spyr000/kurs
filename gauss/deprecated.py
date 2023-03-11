@@ -1,18 +1,12 @@
-import math
-from functools import partial
 from math import exp
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import tqdm as tqdm
 from matplotlib import animation
-from matplotlib.widgets import Slider
-from numba import njit
-from tqdm import tqdm
 
 from new_gauss import RMAX, C
-from utils import deprecated, unused, utility, moved
+from utils import deprecated
 
 
 @deprecated

@@ -3,7 +3,9 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from matplotlib.widgets import Slider
 
-from new_gauss import BOUND_B, BOUND_A, fi_wave, approx_fi_wave2, d_G_k
+from new_gauss import BOUND_B, BOUND_A
+from new_gauss import phi_wave, d_G_k
+from calc_methods import approx_fi_wave2
 from utils import unused, log, utility, RMAX
 from functools import partial
 from tqdm import tqdm
@@ -80,7 +82,7 @@ def calculate_fi():
     x = np.linspace(BOUND_A, BOUND_B, 1000)
 
     for sigma in tqdm(df.index):
-        y = fi_wave(x, sigma)
+        y = phi_wave(x, sigma)
         y1 = approx_fi_wave2(x, sigma)
         # fi_list.append(y.tolist())
         approx_fi_list.append(y1.tolist())

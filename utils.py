@@ -2,10 +2,10 @@ import math
 
 import numpy as np
 
-from new_gauss import C
+import new_lorenz
+import new_gauss
 
 RMAX = 100
-BOUND_A, BOUND_B = -10, 10
 
 def deprecated(func):
     return func
@@ -61,6 +61,7 @@ class Container:
 class Parameters:
     def __init__(self,
                  parent_directory,
+                 bounds,
                  d_filename='d_native.csv',
                  coeff_filename='sigma_alpha_c_err.csv',
                  phi_vals_filename='sigma_fi.csv',
@@ -69,7 +70,8 @@ class Parameters:
                  alpha2_derivative=None,
                  alpha_c_derivative=None,
                  c2_derivative=None,
-                 phi_wave=None):
+                 phi_wave=None,
+                 d_list_func=None):
         self.d_filename = d_filename
         self.parent_directory = parent_directory
         self.c2_derivative = c2_derivative
@@ -80,6 +82,8 @@ class Parameters:
         self.coeff_filename = coeff_filename
         self.phi_vals_filename = phi_vals_filename
         self.phi_wave = phi_wave
+        self.bounds = bounds
+        self.d_list_func = d_list_func
 
 
 @utility
@@ -93,68 +97,78 @@ def d_0(sigma):
         result += (-1) ** r * np.exp((- (r + 0.5) ** 2) / (2 * sigma * sigma))
     return result
 
+#region derivatives
+def alpha_derivative(d, d_pred, d_0, alpha, c, k):
+    return 1 / RMAX * (
+        np.sum(-d_0 * (k ** c)
+               * np.exp(alpha
+                        * (k ** c))
+               * 2 * (d - d_pred))
+    )
+
+def c_derivative(d, d_pred, d_0, alpha, c, k):
+    return 1 / RMAX * (
+        np.sum(-d_0 * alpha * (k ** c)
+               * np.log(k)
+               * np.exp(alpha * (k ** c))
+               * 2 * (d - d_pred))
+    )
+
+def alpha2_derivative(d, d_pred, d_0, alpha, c, k):
+    return 1 / RMAX * (
+        np.sum(
+            -2 * d * (k ** (2 * c)) * d_0 * np.exp((k ** c) * alpha) +
+            4 * (k ** (2 * c)) * (d_0 ** 2) * np.exp(2 * (k ** c) * alpha)
+        )
+    )
+
+def alpha_c_derivative(d, d_pred, d_0, alpha, c, k):
+    return 1 / RMAX * \
+           np.sum(
+               4 * (k ** (2 * c)) * alpha * (d_0 ** 2) * np.exp(
+                   2 * (k ** c) * alpha) * np.log(k) \
+               - 2 * d * (k ** c) * d_0 * np.log(k) * np.exp((k ** c) * alpha) \
+               - 2 * d * (k ** (2 * c)) * alpha * d_0 * np.log(k) * np.exp((k ** c) * alpha) \
+               + 2 * (k ** c) * (d_0 ** 2) * np.exp(2 * (k ** c) * alpha) * np.log(k)
+           )
+
+def c2_derivative(d, d_pred, d_0, alpha, c, k):
+    return 1 / RMAX * \
+           np.sum(
+               4 * (k ** (2 * c)) * (alpha ** 2) * (d_0 ** 2) * np.exp(2 * (k ** c) * alpha) * (
+                       np.log(k) ** 2) \
+               - 2 * d * (k ** c) * alpha * d_0 * (np.log(k) ** 2) * np.exp((k ** c) * alpha) \
+               - 2 * d * (k ** (2 * c)) * (alpha ** 2) * d_0 * (np.log(k) ** 2) * np.exp(
+                   (k ** c) * alpha) \
+               + 2 * (k ** c) * alpha * (d_0 ** 2) * np.exp(2 * (k ** c) * alpha) * (
+                       np.log(k) ** 2)
+           )
+#endregion
 
 def get_gauss_setup():
-    def alpha_derivative(d, d_pred, d_0, alpha, c, k):
-        return 1 / RMAX * (
-            np.sum(-d_0 * (k ** c)
-                   * np.exp(alpha
-                            * (k ** c))
-                   * 2 * (d - d_pred))
-        )
+    # def phi_wave(sigma, x, d):
+    #     approx_fi = []
+    #
+    #     for xx in x:  # пересчитываем значение приближенной узловой функции
+    #         fi_val = 0
+    #         for k in range(-RMAX, RMAX + 1):
+    #             fi_val += d[abs(k)] * math.exp(-((xx - k) * (xx - k)) / (2 * sigma * sigma))
+    #
+    #         fi_val *= 1 / C(sigma)
+    #         approx_fi.append(fi_val)
+    #
+    #     return approx_fi
+    # def phi_wave(sigma, x, d):
+    #     fi_val = 0
+    #     for k in range(-RMAX, RMAX + 1):
+    #         fi_val += d[abs(k)] * math.exp(-((x - k) * (x - k)) / (2 * sigma * sigma))
+    #
+    #     fi_val *= 1 / C(sigma)
+    #     return fi_val
 
-    def c_derivative(d, d_pred, d_0, alpha, c, k):
-        return 1 / RMAX * (
-            np.sum(-d_0 * alpha * (k ** c)
-                   * np.log(k)
-                   * np.exp(alpha * (k ** c))
-                   * 2 * (d - d_pred))
-        )
 
-    def alpha2_derivative(d, d_pred, d_0, alpha, c, k):
-        return 1 / RMAX * (
-            np.sum(
-                -2 * d * (k ** (2 * c)) * d_0 * np.exp((k ** c) * alpha) +
-                4 * (k ** (2 * c)) * (d_0 ** 2) * np.exp(2 * (k ** c) * alpha)
-            )
-        )
-
-    def alpha_c_derivative(d, d_pred, d_0, alpha, c, k):
-        return 1 / RMAX * \
-               np.sum(
-                   4 * (k ** (2 * c)) * alpha * (d_0 ** 2) * np.exp(
-                       2 * (k ** c) * alpha) * np.log(k) \
-                   - 2 * d * (k ** c) * d_0 * np.log(k) * np.exp((k ** c) * alpha) \
-                   - 2 * d * (k ** (2 * c)) * alpha * d_0 * np.log(k) * np.exp((k ** c) * alpha) \
-                   + 2 * (k ** c) * (d_0 ** 2) * np.exp(2 * (k ** c) * alpha) * np.log(k)
-               )
-
-    def c2_derivative(d, d_pred, d_0, alpha, c, k):
-        return 1 / RMAX * \
-               np.sum(
-                   4 * (k ** (2 * c)) * (alpha ** 2) * (d_0 ** 2) * np.exp(2 * (k ** c) * alpha) * (
-                           np.log(k) ** 2) \
-                   - 2 * d * (k ** c) * alpha * d_0 * (np.log(k) ** 2) * np.exp((k ** c) * alpha) \
-                   - 2 * d * (k ** (2 * c)) * (alpha ** 2) * d_0 * (np.log(k) ** 2) * np.exp(
-                       (k ** c) * alpha) \
-                   + 2 * (k ** c) * alpha * (d_0 ** 2) * np.exp(2 * (k ** c) * alpha) * (
-                           np.log(k) ** 2)
-               )
-
-    def phi_wave(sigma, x, d):
-        approx_fi = []
-
-        for xx in x:  # пересчитываем значение приближенной узловой функции
-            fi_val = 0
-            for k in range(-RMAX, RMAX + 1):
-                fi_val += d[abs(k)] * math.exp(-((xx - k) * (xx - k)) / (2 * sigma * sigma))
-
-            fi_val *= 1 / C(sigma)
-            approx_fi.append(fi_val)
-
-        return approx_fi
-
-    parameters = Parameters('gauss_resources',
+    parameters = Parameters(new_gauss.PARENT_DIRECTORY,
+                            (new_gauss.BOUND_A,new_gauss.BOUND_B),
                             d_filename='d_native.csv',
                             coeff_filename='sigma_alpha_c_err.csv',
                             alpha_derivative=alpha_derivative,
@@ -162,5 +176,34 @@ def get_gauss_setup():
                             alpha2_derivative=alpha2_derivative,
                             alpha_c_derivative=alpha_c_derivative,
                             c2_derivative=c2_derivative,
-                            phi_wave=phi_wave)
+                            phi_wave=new_gauss.phi_wave,
+                            d_list_func=new_gauss.d_list)
+    return parameters
+
+
+def get_lorenz_setup():
+    # def phi_wave(sigma, x, d):
+    #     approx_fi = []
+    #
+    #     for xx in x:  # пересчитываем значение приближенной узловой функции
+    #         fi_val = 0
+    #         for k in range(-RMAX, RMAX + 1):
+    #             fi_val += d[abs(k)] * math.exp(-((xx - k) * (xx - k)) / (2 * sigma * sigma))
+    #
+    #         fi_val *= 1 / C(sigma)
+    #         approx_fi.append(fi_val)
+    #
+    #     return approx_fi
+
+    parameters = Parameters(new_lorenz.PARENT_DIRECTORY,
+                            (new_lorenz.BOUND_A,new_lorenz.BOUND_B),
+                            d_filename='d_native.csv',
+                            coeff_filename='sigma_alpha_c_err.csv',
+                            alpha_derivative=alpha_derivative,
+                            c_derivative=c_derivative,
+                            alpha2_derivative=alpha2_derivative,
+                            alpha_c_derivative=alpha_c_derivative,
+                            c2_derivative=c2_derivative,
+                            phi_wave=new_lorenz.phi_wave,
+                            d_list_func=new_lorenz.d_list)
     return parameters

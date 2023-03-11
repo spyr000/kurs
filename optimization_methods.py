@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from new_gauss import RMAX
+from utils import RMAX
 from utils import utility, Container, Parameters, unused, deprecated
 
 

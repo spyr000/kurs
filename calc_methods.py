@@ -4,7 +4,8 @@ import numpy as np
 import pandas as pd
 
 import optimization_methods
-from new_gauss import d_list, RMAX, C
+# from new_gauss import d_list, C
+from utils import RMAX
 from utils import calc, Parameters, unused
 
 
@@ -55,7 +56,7 @@ def calculate_d(parameters: Parameters, a=0.1, b=2.1, h=0.02):
     df_list = []
     sigmas = np.arange(a, b + h, h)
     for sigma in sigmas:
-        df_list.append(d_list(sigma))
+        df_list.append(parameters.d_list_func(sigma))
     df = pd.DataFrame(df_list, index=pd.Index(sigmas, name='sigma'))
     df.to_csv(parameters.parent_directory + '\\' + parameters.d_filename)
 

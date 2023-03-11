@@ -1,10 +1,8 @@
-from math import exp
-
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 
-from new_gauss import BOUND_A, BOUND_B, RMAX, C
+from new import RMAX
 from utils import visual, Parameters
 from matplotlib.widgets import Slider
 
@@ -110,11 +108,12 @@ def fi_approx_fi_slider(parameters: Parameters):
     sigmas = coeff_df.index.tolist()
     fi = fi_df.loc[0.1]
 
-    x = np.linspace(BOUND_A, BOUND_B, 1000)
+    x = np.linspace(parameters.bounds[0], parameters.bounds[1], 1000)
 
     fig = plt.figure()
-    ax = plt.axes(xlim=(BOUND_A, BOUND_B), ylim=(-1.2, 1.2))
-    major_xticks, minor_xticks = np.arange(BOUND_A, BOUND_B + 1, 1), np.arange(BOUND_A - 0.5, BOUND_B - 0.5, 1)
+    ax = plt.axes(xlim=(parameters.bounds[0], parameters.bounds[1]), ylim=(-1.2, 1.2))
+    major_xticks, minor_xticks = np.arange(parameters.bounds[0], parameters.bounds[1] + 1, 1),\
+                                 np.arange(parameters.bounds[0] - 0.5, parameters.bounds[1] - 0.5, 1)
     major_yticks, minor_yticks = np.arange(-1.2, 1.4, 0.2), np.arange(-1.1, 1.3, 0.2)
     ax.set_xticks(major_xticks)
     ax.set_xticks(minor_xticks, minor=True)
@@ -130,7 +129,7 @@ def fi_approx_fi_slider(parameters: Parameters):
                  (kk ** c)) \
         * (-1.) ** kk
 
-    approx_fi = parameters.phi_wave(0.1, x, d)
+    approx_fi = parameters.phi_wave(0.1, x, d=d)
 
     true_fi_line, = plt.plot(x, fi, label='$\phi$')  # линия для настоящей узловой функции fi
     line2, = plt.plot(x, approx_fi, label='$\hat{\phi}$')  # линия для приближенной узловой функции fi
@@ -165,7 +164,7 @@ def fi_approx_fi_slider(parameters: Parameters):
         # d[np.round(sigma*10).astype(int):]=0
 
 
-        approx_fi = parameters.phi_wave(sigma, x, d)
+        approx_fi = parameters.phi_wave(sigma, x, d=d)
 
         line2.set_data(x, approx_fi)
         plt.draw()
