@@ -3,8 +3,7 @@ import numpy as np
 import pandas as pd
 from numba import njit
 
-
-RMAX=100
+RMAX = 100
 BOUND_A, BOUND_B = -10, 10
 PARENT_DIRECTORY = 'C:\\Users\\mrzed\\PycharmProjects\\kursovaya\\gauss_resources'
 
@@ -38,7 +37,7 @@ def d_list(sigma: float) -> list:
 def phi_wave(x: np.ndarray, sigma: float, d=None):
     fi_val = 0
     if d is None:
-        d = pd.read_csv(PARENT_DIRECTORY+'//d_native.csv'
+        d = pd.read_csv(PARENT_DIRECTORY + '//d_native.csv'
                         , header=0
                         , index_col=['sigma']
                         )
@@ -48,4 +47,3 @@ def phi_wave(x: np.ndarray, sigma: float, d=None):
         fi_val += d[abs(k)] * exp(-((x - k) * (x - k)) / (2 * sigma * sigma))
 
     return 1 / C(sigma) * fi_val
-

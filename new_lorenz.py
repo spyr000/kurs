@@ -3,6 +3,7 @@ from numba import njit, vectorize, float64, int64
 import pandas as pd
 import os
 
+from utils import customizable_vectorize
 
 RMAX = 100
 BOUND_A, BOUND_B = -np.pi, np.pi
@@ -34,7 +35,7 @@ def d_list(sigma):
 
 
 # @vectorize([(float64, float64)], target="parallel", nopython=True, cache=True)
-@np.vectorize
+@customizable_vectorize(excluded='d')
 def phi_wave(x, sigma, d=None):
     if d is None:
         d = pd.read_csv(PARENT_DIRECTORY + '//d_native.csv'
@@ -58,7 +59,3 @@ def calculate_d(a=0.1, b=2.1, h=0.02):
     df = pd.DataFrame(d, index=pd.Index(sigmas, name='sigma'))
     df.to_csv(PARENT_DIRECTORY+'\\d_native.csv')
 
-
-if __name__ == '__main__':
-    p = utils.get_lorenz_setup()
-#     calculate_d()

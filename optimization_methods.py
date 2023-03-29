@@ -11,7 +11,7 @@ def is_pos_def(x):
     return x[0, 0] > 0 and (x[0, 0] * x[1, 1] - x[0, 1] * x[1, 0]) > 0
 
 
-def newton(sigma, parameters: Parameters, alpha=0, c=0, lr=1e-8, h_a=0.005, h_c=0.005):
+def newton(sigma, parameters: Parameters, alpha=0, c=0, lr=1e-8, h_a=0.5, h_c=0.5):
     container = Container()
 
     d = pd.read_csv(parameters.parent_directory + '\\' + parameters.d_filename
