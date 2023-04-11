@@ -194,10 +194,10 @@ class Parameters:
 k = np.arange(0, RMAX + 1)
 
 
-def gauss_approx_func(d_0, x, signchanging=True, k=k):
-    return ((d_0 / 2) * np.exp(x[0] * ((k*x[2]) ** x[1])) + (d_0 / 2) * np.exp(x[3] * ((k*x[5]) ** x[4]))) * (-1.) ** k \
-        if signchanging\
-        else (d_0 / 2) * np.exp(x[0] * ((k*x[2]) ** x[1])) + (d_0 / 2) * np.exp(x[3] * ((k*x[5]) ** x[4]))
+# def gauss_approx_func(d_0, x, signchanging=True, k=k):
+#     return ((d_0 / 2) * np.exp(x[0] * ((k*x[2]) ** x[1])) + (d_0 / 2) * np.exp(x[3] * ((k*x[5]) ** x[4]))) * (-1.) ** k \
+#         if signchanging\
+#         else (d_0 / 2) * np.exp(x[0] * ((k*x[2]) ** x[1])) + (d_0 / 2) * np.exp(x[3] * ((k*x[5]) ** x[4]))
 # x[2] * np.exp(-(k**2)/(2*(x[3]+x[4])))
 
 # def gauss_approx_func(d_0, x, signchanging=True, k=k):
@@ -211,8 +211,37 @@ def gauss_approx_func(d_0, x, signchanging=True, k=k):
 #         if signchanging \
 #         else x[0] * (k ** 4) + x[1] * (k ** 3) + x[2] * (k ** 2) + x[3] * k + d_0
 
-def lorenz_approx_func(d_0, alpha, c, k=k):
-    return alpha / (k + (alpha / d_0) ** (1 / c)) ** c
+def gauss_approx_func(d_0, x, signchanging=True, k=k):
+    f = d_0 * np.exp(x[0] * (1 - (1 + (k / x[0]) ** x[1]) ** (1 / x[1])))  # + x[2] * np.sin(np.exp(x[3] * k + x[4]))
+    return f * (-1.) ** k \
+        if signchanging \
+        else f
+
+# def gauss_approx_func(d_0, x, signchanging=True, k=k):
+#     f = d_0 * np.exp(
+#     if signchanging:
+#         return
+
+
+# def gauss_approx_func(d_0, x, signchanging=True, k=k):
+#     f = x[0] * k ** 10 + x[1] * k ** 9 + x[2] * k ** 8 + x[3] * k ** 7 + x[4] * k ** 6 + x[5] * k ** 5 + x[6] * k ** 4 + x[7] * k ** 3 + x[8] * k ** 2 + x[9] * k + d_0
+#     f[f < 0] = 0
+#     return f * (-1.) ** k \
+#         if signchanging \
+#         else f
+
+
+# target_approx_func = lambda x, s=True: x[0] * np.sin(x[1] * k + x[2]) * (-1.) ** k if s else x[0] * np.sin(x[1] * k + x[2])
+
+def target_approx_func(x, s=True):
+    f = x[0] * np.sin(x[1] * k + x[2])
+    f[f < 0] = 0
+    return f * (-1.) ** k if s else f
+
+
+def lorenz_approx_func(d_0, x, signchanging=True, k=k):
+    f = x[0] / (k + (x[0] / d_0) ** (1 / x[1])) ** x[1]
+    return f * (-1.) ** k if signchanging else f
 
 
 @utility
@@ -294,7 +323,7 @@ def get_gauss_setup():
                             phi_wave=Gauss.phi_wave,
                             d_list_func=Gauss.d_list,
                             approx_func=gauss_approx_func,
-                            file_coeffs=['a','b','c','d','e','f'])
+                            file_coeffs=['a','b'])
     return parameters
 
 
@@ -309,5 +338,8 @@ def get_lorenz_setup():
                             alpha_c_derivative=alpha_c_derivative,
                             c2_derivative=c2_derivative,
                             phi_wave=Lorenz.phi_wave,
-                            d_list_func=Lorenz.d_list)
+                            d_list_func=Lorenz.d_list,
+                            approx_func=lorenz_approx_func,
+                            file_coeffs=['a', 'b']
+                            )
     return parameters
