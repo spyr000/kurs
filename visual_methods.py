@@ -90,6 +90,65 @@ def calculate_hyperbola(parameters: Parameters):
     plt.grid()
     plt.show()
 
+def check_ratio2(parameters: Parameters):
+    d_df = pd.read_csv(parameters.parent_directory + '\\' + parameters.d_filename
+                       , header=0
+                       , index_col=['sigma']
+                       )
+    sigmas = np.array(d_df.index)
+    k = np.arange(0, RMAX + 1)  # набор координат по оси x
+    ax = plt.axes(xlim=(0, 3), ylim=(-10, 0))
+    true_d_line, = ax.plot([], [], lw=2)  # линия для настоящих коэффициетов d
+    pred_d_line, = ax.plot([], [], lw=0.5)  # линия для приближенных коэффициетов d
+    sigma_text = ax.text(0.55, 0.75, '', transform=ax.transAxes)  # текст для вывода значения sigma
+    error_text = ax.text(0.55, 0.85, '', transform=ax.transAxes)  # текст для вывода ошибки
+    d_list = []
+    axsigm = plt.axes([0.15, 0.01, 0.65, 0.03])  # ось ползунка для параметра sigma
+    ssigm = Slider(axsigm, '$\sigma$', 0, 100, valinit=0, valstep=1)  # ползунок для параметра sigma
+
+    for i in d_df.index:  # проходимся по всем сигмам
+        d = np.array(d_df.loc[i])
+        d_list.append(d)  # записываем в список с коэффициентами d для разных сигм
+
+    vals = {}
+    def update_sigma(i):
+        true_d = np.abs(d_list[i])  # считываем настоящие коэффициенты d
+        sigma = d_df.index[i]
+
+        k_ = k.copy()
+        k_[k_ == 0] = 1
+        log1 = None
+        try:
+            log = np.log(true_d / true_d[0])
+        except RuntimeWarning:
+            print(true_d[0], sigma)
+        s = 2 * sigma * sigma
+        true_d = np.log(-(np.log(true_d / true_d[-1]) + (k - RMAX)/s) / (np.log(true_d[-1]/true_d[0]) + RMAX/s))
+        vals.update({sigma:true_d[1]})
+        true_d_line.set_data(k, true_d)
+        # print(alpha_k[1], 1 / (2 * sigma * sigma + 1))
+        # param = 11
+        # pred = (log[-1]+RMAX/s)  * (1 - np.exp(-k/(sigma*sigma)))
+        # pred_d_line.set_data(k, pred )  # 1 - e
+        # print(val)
+        # обновляем координаты линии настоящих коэффициетов d
+        true_d_line.set_marker('.')
+        true_d_line.set_label('d')
+        sigma_text.set_text(('$\sigma$: ' + str(sigmas[i])))  # обновляем текст для вывода значения sigma
+        # error_text.set_text(('ошибка: ' + str(mse(true_d,pred))))  # обновляем текст для вывода ошибки
+
+    ssigm.on_changed(update_sigma)
+    plt.grid()
+    plt.show()
+    vals_list = []
+    for sigma in sigmas:
+        try:
+            vals_list.append(vals[sigma])
+        except KeyError:
+            vals_list.append(0)
+    plt.plot(sigmas,vals_list)
+    plt.plot(sigmas,-1/sigmas)
+    plt.show()
 
 def check_ratio(parameters: Parameters):
     d_df = pd.read_csv(parameters.parent_directory + '\\' + parameters.d_filename
@@ -116,6 +175,7 @@ def check_ratio(parameters: Parameters):
         d = np.array(d_df.loc[i])
         d_list.append(d)  # записываем в список с коэффициентами d для разных сигм
 
+    arcth = lambda x: 0.5 * np.log((x + 1) / (x - 1))
     ones = np.ones(k.shape)
     def update_sigma(i):
         true_d = np.abs(d_list[i])  # считываем настоящие коэффициенты d
@@ -131,15 +191,17 @@ def check_ratio(parameters: Parameters):
             print(true_d[0], sigma)
         # alpha_k = np.arctan(np.pi * sigma * sigma * log + np.pi * k / 2) / k_
         # alpha_k = (np.log(RMAX - k - 2*sigma*sigma*np.log(true_d/true_d[0])) - np.log(2*sigma*sigma)) / k_
-        alpha_k = np.arctanh((2 * sigma * sigma * np.log(true_d / true_d[0]) + k) / RMAX)  # / k_
+        alpha_k = arcth((log + k/(s:=2*sigma*sigma)) / (RMAX/s + log[-1] - log[0]))  # / k_
+        print((log + k/(s:=2*sigma*sigma)) / (RMAX/s + log[-1] - log[0]))
         # true_d_line.set_data(k, val:=(np.log(true_d / true_d[0]) + k/(2 * sigma**2)))
         # print(alpha_k)
-        true_d_line.set_data(k, alpha_k)
+        # true_d_line.set_data(k, alpha_k)
+        print(alpha_k)
         # print(alpha_k[1], 1 / (2 * sigma * sigma + 1))
         # param = 11
-        pred = ((2 * sigma * sigma * np.log(true_d[-1] / true_d[0])) / RMAX + 1) * (
-                1 - (5*sigma / (2 * sigma * sigma)) ** (-k))
-        pred_d_line.set_data(k, pred )  # 1 - e
+        # pred = ((2 * sigma * sigma * np.log(true_d[-1] / true_d[0])) / RMAX + 1) * (
+        #         1 - (5*sigma / (2 * sigma * sigma)) ** (-k))
+        # pred_d_line.set_data(k, pred )  # 1 - e
         # print(val)
         # обновляем координаты линии настоящих коэффициетов d
         true_d_line.set_marker('.')
@@ -292,6 +354,73 @@ def sigma_d_slider(parameters: Parameters):
     plt.grid()
     plt.show()
 
+def sigma_d_slider2(parameters: Parameters):
+    coeff_df = pd.read_csv(parameters.parent_directory + '\\' + parameters.coeff_filename
+                           , header=0
+                           , index_col=['sigma']
+                           )
+    d_df = pd.read_csv(parameters.parent_directory + '\\' + parameters.d_filename
+                       , header=0
+                       , index_col=['sigma']
+                       )
+    sigmas = np.array(coeff_df.index)
+    k = np.arange(0, RMAX + 1)  # набор координат по оси x
+    fig = plt.figure()
+    ax = plt.axes(xlim=(0, 101), ylim=(-0.2, 2))
+    true_d_line, = ax.plot([], [], lw=2)  # линия для настоящих коэффициетов d
+    pred_d_line, = ax.plot([], [], lw=0.5)  # линия для приближенных коэффициетов d
+    # vline, = ax.plot([], [], lw=0.5)
+    error_text = ax.text(0.55, 0.85, '', transform=ax.transAxes)  # текст для вывода ошибки
+    sigma_text = ax.text(0.55, 0.75, '', transform=ax.transAxes)  # текст для вывода значения sigma
+
+    d_list = []
+    d_pred_list = []
+
+    axc = plt.axes([0.15, 0.05, 0.65, 0.03])  # ось ползунка для параметра c
+    axalpha = plt.axes([0.15, 0.03, 0.65, 0.03])  # ось ползунка для параметра alpha
+    axsigm = plt.axes([0.15, 0.01, 0.65, 0.03])  # ось ползунка для параметра sigma
+
+    sc = Slider(axc, parameters.file_coeffs[1], 0, 50, valstep=0.01)  # ползунок для параметра c
+    salpha = Slider(axalpha, parameters.file_coeffs[0], 0, 400, valstep=0.1)  # ползунок для параметра alpha
+    ssigm = Slider(axsigm, '$\sigma$', 0, 100, valinit=0, valstep=1)  # ползунок для параметра sigma
+
+    for i in coeff_df.index:  # проходимся по всем сигмам
+        d = np.array(d_df.loc[i])
+        d_list.append(d)  # записываем в список с коэффициентами d для разных сигм
+
+    def update_sigma(i):
+        true_d = np.abs(d_list[i])  # считываем настоящие коэффициенты d
+        sigma = coeff_df.index[i]
+        coeffs = coeff_df.loc[sigma]
+
+        salpha.set_val(coeffs.iat[0])  # устанавливаем значение параметра alpha
+        sc.set_val(coeffs.iat[1])  # устанавливаем значение ползунка с
+        # alpha_k = np.arctan(np.pi * sigma * sigma * np.log(true_d / true_d[0]) + np.pi * k / 2) / k
+        alpha_pred = ((2 * sigma * sigma * np.log(true_d[-1] / true_d[0])) / RMAX + 1) * (
+                1 - (5 * sigma / (2 * sigma * sigma)) ** (-k))
+        cot = RMAX / (s:=2 * sigma * sigma) * np.tanh(alpha_pred)
+
+        pred_d = (d_0:=true_d[0]) * np.exp(cot - k/s)
+        true_d_line.set_data(k, true_d)
+        # обновляем координаты линии настоящих коэффициетов d
+        true_d_line.set_marker('.')
+        true_d_line.set_label('d')
+        # обновляем координаты линии приближенных коэффициетов d
+        pred_d_line.set_data(k, pred_d)
+        pred_d_line.set_marker('.')
+        # xv = np.round(sigma * 6).astype(int)
+        # xv = d_0
+        # vline.set_data(np.linspace(parameters.bounds[0],parameters.bounds[1],10),np.full(10,xv))
+        # print(sigma, xv,np.argmin(true_d[:xv+1]))
+
+        error_text.set_text(('ошибка: ' + str(coeff_df.iat[i, -1])))  # обновляем текст для вывода ошибки
+        sigma_text.set_text(('$\sigma$: ' + str(sigmas[i])))  # обновляем текст для вывода значения sigma
+
+        return true_d_line, pred_d_line, error_text, sigma_text,
+
+    ssigm.on_changed(update_sigma)
+    plt.grid()
+    plt.show()
 
 @visual
 def fi_approx_fi_slider(parameters: Parameters):
@@ -376,6 +505,78 @@ def fi_approx_fi_slider(parameters: Parameters):
     sindex.on_changed(update)
     plt.show()
 
+@visual
+def fi_approx_fi_slider2(parameters: Parameters):
+    fi_df = pd.read_csv(parameters.parent_directory + '\\' + parameters.phi_vals_filename
+                        , header=0
+                        , index_col=['sigma']
+                        )
+
+    d_df = pd.read_csv(parameters.parent_directory + '\\' + parameters.d_filename
+                       , header=0
+                       , index_col=['sigma']
+                       )
+
+    sigmas = d_df.index.tolist()
+    fi = fi_df.loc[0.1]
+
+    x = np.linspace(parameters.bounds[0], parameters.bounds[1], 1000)
+
+    fig = plt.figure()
+    ax = plt.axes(xlim=(parameters.bounds[0], parameters.bounds[1]), ylim=(-1.2, 1.2))
+    major_xticks, minor_xticks = np.arange(parameters.bounds[0], parameters.bounds[1] + 1, 1), \
+                                 np.arange(parameters.bounds[0] - 0.5, parameters.bounds[1] - 0.5, 1)
+    major_yticks, minor_yticks = np.arange(-1.2, 1.4, 0.2), np.arange(-1.1, 1.3, 0.2)
+    ax.set_xticks(major_xticks)
+    ax.set_xticks(minor_xticks, minor=True)
+    ax.set_yticks(major_yticks)
+    ax.set_yticks(minor_yticks, minor=True)
+    ax.grid(which='minor', alpha=0.2)
+    ax.grid(which='major', alpha=0.8)
+
+    kk = np.arange(0, RMAX + 1)  # значения номеров коэффициентов d соответствующие координате x графика
+
+    d_0 = d_df.iat[0,0]
+    sigma = sigmas[0]
+    pred_d = (-1) ** kk * d_0 * np.exp(RMAX/(s:=2*sigma*sigma) * (1 - np.exp(-kk/(sigma*sigma))) - kk/s)
+    approx_fi = parameters.phi_wave(x, 0.1, d=pred_d)
+
+    true_fi_line, = plt.plot(x, fi, label='$\phi$')  # линия для настоящей узловой функции fi
+    line2, = plt.plot(x, approx_fi, label='$\hat{\phi}$')  # линия для приближенной узловой функции fi
+    plt.legend()
+
+    axsigma = plt.axes([0.15, 0.01, 0.65, 0.03])  # ось ползунка для параметра sigma
+    axindex = plt.axes([0.15, 0.03, 0.65, 0.03])  # ось ползунка для параметра index
+
+    ssigma = Slider(axsigma, '$\sigma$', 0, 100, valinit=0, valstep=1)  # ползунок для параметра sigma
+    sindex = Slider(axindex, 'index', 0, 100, valinit=0, valstep=1)  # ползунок для параметра index
+
+    def update(val):
+        sigma_ind = ssigma.val  # считываем значение индекса sigma из значения ползунка
+        sigma = sigmas[sigma_ind]
+        fi = fi_df.loc[sigma]  # считываем значения настоящей узловой функции fi
+        true_fi_line.set_data(x, fi)  # обновляем координаты линии настоящей узловой функции fi
+        plt.title(f'$\sigma = {sigma}$')
+        true_d = np.array(d_df.loc[sigma])
+        ind = sindex.val  # считываем значение индекса из значения ползунка
+
+        d_0 = true_d[0]
+
+        s = 2*sigma*sigma
+        # alpha_pred = ((2 * sigma * sigma * np.log(true_d[-1] / true_d[0])) / RMAX + 1) * (
+        #         1 - (5 * sigma / (2 * sigma * sigma)) ** (-kk))
+        # cot = (RMAX /s + np.log(true_d[-1] / true_d[0])) * np.tanh(alpha_pred)
+        # pred_d = true_d[0] * np.exp(cot - kk / s)
+        pred_d = (-1) ** kk * d_0 * np.exp((np.log(true_d[-1] / true_d[0])+RMAX/s)  * (1 - np.exp(-kk/(sigma*sigma))) - kk/s)
+
+        approx_fi = parameters.phi_wave(x, sigma, d=pred_d)
+        # print(approx_fi)
+        line2.set_data(x, approx_fi)
+        plt.draw()
+
+    ssigma.on_changed(update)
+    sindex.on_changed(update)
+    plt.show()
 
 @visual
 def alpha_sigma_plot(parameters: Parameters, coeff_num=0):

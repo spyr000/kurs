@@ -25,6 +25,7 @@ class LorenzLoss:
         self.approx_func = lambda x: x[0] / (k ** x[1])
 
 
+
 def calculate_new_vals(parameters: Parameters):
     dff = pd.read_csv(parameters.parent_directory + '\\' + parameters.d_filename
                       , header=0
